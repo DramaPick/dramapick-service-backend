@@ -2,15 +2,58 @@ from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Q
 from pydantic import BaseModel
 from typing import Dict, Optional
 import time
+import redis
+import requests
+from bs4 import BeautifulSoup
+import json
 import boto3
 from botocore.exceptions import NoCredentialsError, ClientError
 import os
-from dotenv import load_dotenv
 
-# 환경 변수 로드
-load_dotenv()
 
 app = FastAPI()
+
+# Redis 연결 설정
+redis_client = redis.StrictRedis(host="localhost", port=6379, db=0, decode_responses=True)
+
+
+def search_drama(drama_title: str):
+    # Redis에 캐시 데이터가 있는지 확인
+    if redis_client.exists(drama_title):
+        cached_data = redis_client.get(drama_title)
+        return json.loads(cached_data)
+
+    # 네이버에서 드라마 정보 크롤링
+    search_url = f"https://search.naver.com/search.naver?query={drama_title}"
+    response = requests.get(search_url)
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    # 크롤링 데이터 추출 (HTML 구조에 맞게 수정 필요)
+    try:
+        title = soup.select_one(".title_selector").text.strip()
+        broadcaster = soup.select_one(".broadcaster_selector").text.strip()
+        air_date = soup.select_one(".air_date_selector").text.strip()
+    except AttributeError:
+        return None
+
+    # Redis에 데이터 저장
+    drama_data = {
+        "title": title,
+        "broadcaster": broadcaster,
+        "air_date": air_date
+    }
+    redis_client.set(drama_title, json.dumps(drama_data))
+
+    return drama_data
+
+@app.get("/search/")
+async def search_drama_api(drama_title: str):
+    # 드라마 정보를 검색
+    result = search_drama(drama_title)
+    if result:
+        return {"status": "success", "data": result}
+    else:
+        raise HTTPException(status_code=404, detail="드라마 정보를 찾을 수 없습니다.")
 
 # 작업 상태 저장을 위한 임시 딕셔너리
 task_status: Dict[str, str] = {}
@@ -68,7 +111,7 @@ def process_video(s3_url: str, task_id: str):
     task_status[task_id] = "완료"  # 작업 상태 업데이트
 
 # 영상 파일 업로드 및 처리 API
-@app.post("/upload/")
+@app.post("/upload")
 async def upload_video(
     file: UploadFile = File(...), 
     dramaTitle: str = Form(...),
