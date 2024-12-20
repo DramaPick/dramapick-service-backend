@@ -15,8 +15,7 @@ import redis
 import requests
 from bs4 import BeautifulSoup
 import json
-import boto3
-from botocore.exceptions import NoCredentialsError, ClientError
+from botocore.exceptions import NoCredentialsError
 
 TEMP_DIR = 'tmp'
 
@@ -197,20 +196,6 @@ def upload_to_s3(file, filename, content_type):
             UploadId=upload_id
         )
         raise e
-    
-'''
-# S3에 파일을 업로드하는 함수
-def upload_to_s3(file, filename, content_type):
-    try:
-        s3_client.upload_fileobj(
-            file,
-            S3_BUCKET_NAME,
-            filename,
-            ExtraArgs={"ContentType": content_type}
-        )
-        return f"https://{S3_BUCKET_NAME}.s3.{S3_REGION_NAME}.amazonaws.com/{filename}"
-    except NoCredentialsError:
-        raise Exception("AWS credentials not found.")'''
 
 # 영상 처리를 비동기로 수행하는 함수
 def process_video(s3_url: str, task_id: str):
