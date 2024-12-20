@@ -1,16 +1,37 @@
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Query, Form
-from pydantic import BaseModel
-from typing import Dict, Optional
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Form, Request
+from typing import Dict
 import time
-import boto3
-from botocore.exceptions import NoCredentialsError, ClientError
+from botocore.exceptions import NoCredentialsError
 import os
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from io import BytesIO
+from face_detection_and_clustering import face_detection_and_clustering
+import mimetypes
+from s3_client import s3_client
+import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 환경 변수 로드
 load_dotenv()
 
+TEMP_DIR = 'tmp'
+
+# CORS 미들웨어 추가
+origins = [
+    "http://localhost:3000",  # 허용할 출처
+    # 여기에 다른 출처를 추가할 수 있습니다.
+]
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # 요청을 허용할 출처 목록
+    allow_credentials=True,
+    allow_methods=["*"],  # 모든 HTTP 메서드 (GET, POST, PUT 등) 허용
+    allow_headers=["*"],  # 모든 헤더 허용
+)
 
 # 작업 상태 저장을 위한 임시 딕셔너리
 task_status: Dict[str, str] = {}
@@ -21,13 +42,118 @@ AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "test-fastapi-bucket")
 S3_REGION_NAME = os.getenv("S3_REGION_NAME", "ap-northeast-2")
 
-s3_client = boto3.client(
-    "s3",
-    aws_access_key_id=AWS_ACCESS_KEY,
-    aws_secret_access_key=AWS_SECRET_KEY,
-    region_name=S3_REGION_NAME
-)
 
+def delete_specified_files(task_id, folder_path=TEMP_DIR):
+    try:
+        if os.path.exists(folder_path):
+            # 폴더 내 모든 파일 탐색
+            for filename in os.listdir(folder_path):
+                # 파일 이름이 v{task_id}_frame... 형식인 파일 찾기
+                if filename.startswith(f"v{task_id}"):
+                    file_path = os.path.join(folder_path, filename)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)  # 파일 삭제
+                        print(f"파일 {filename}이 삭제되었습니다.")
+            print(f"task_id: {task_id}와 일치하는 모든 파일 삭제 완료.")
+        else:
+            print(f"폴더 {folder_path}가 존재하지 않습니다.")
+    except Exception as e:
+        print(f"파일 삭제 중 오류 발생: {e}")
+
+@app.get("/download_shorts")
+def download_short(file_name: str):
+    print("file name: " + file_name)
+    try:
+        # S3에서 파일 가져오기
+        s3_object = s3_client.get_object(Bucket=S3_BUCKET_NAME, Key=file_name)
+        video_file = s3_object['Body'].read()  # 파일 내용 가져오기
+        file_size = len(video_file)  # 파일 크기 계산
+    except s3_client.exceptions.NoSuchKey:
+        raise HTTPException(status_code=404, detail=f"Video {file_name} not found in S3 bucket.")
+
+    headers = {
+        "Content-Length": str(file_size),
+    }
+    # 여러 개의 동영상 파일을 ZIP 등으로 묶어서 보내는 방법
+    # 이 예시에서는 각 파일을 별도로 스트리밍으로 전송
+    return StreamingResponse(BytesIO(video_file), media_type="video/mp4", headers=headers)
+
+
+def upload_part(file, filename, upload_id, part_number, part_size):
+    # 해당 파트 데이터 읽기
+    part_data = file.read(part_size)
+
+    # 파트 업로드
+    part_response = s3_client.upload_part(
+        Bucket=S3_BUCKET_NAME,
+        Key=filename,
+        UploadId=upload_id,
+        PartNumber=part_number,
+        Body=part_data
+    )
+    return part_number, part_response['ETag']
+
+
+def upload_to_s3(file, filename, content_type):
+    try:
+        # 멀티파트 업로드 시작
+        create_multipart_upload_response = s3_client.create_multipart_upload(
+            Bucket=S3_BUCKET_NAME,
+            Key=filename,
+            ContentType=content_type
+        )
+        upload_id = create_multipart_upload_response['UploadId']
+
+        # 업로드할 파트 수 계산
+        file_size = os.path.getsize(file.name)  # 파일의 크기
+        part_size = 5 * 1024 * 1024  # 5MB 단위로 분할 (최소 파트 크기)
+        num_parts = (file_size // part_size) + \
+            (1 if file_size % part_size > 0 else 0)
+
+        # 파일 포인터를 처음으로 되돌리기 위해 다시 설정
+        file.seek(0)
+
+        # 파트 업로드할 스레드 풀 설정
+        with ThreadPoolExecutor() as executor:
+            futures = []
+            part_info = []
+
+            # 각 파트를 비동기적으로 업로드
+            for part_number in range(1, num_parts + 1):
+                futures.append(executor.submit(upload_part, file,
+                               filename, upload_id, part_number, part_size))
+
+            # 모든 파트가 완료될 때까지 기다리고 결과 처리
+            for future in as_completed(futures):
+                part_number, etag = future.result()
+                part_info.append({
+                    'PartNumber': part_number,
+                    'ETag': etag
+                })
+        part_info.sort(key=lambda x: x['PartNumber'])
+        # 업로드 완료
+        s3_client.complete_multipart_upload(
+            Bucket=S3_BUCKET_NAME,
+            Key=filename,
+            UploadId=upload_id,
+            MultipartUpload={'Parts': part_info}
+        )
+
+        # 파일 URL 반환
+        return f"https://{S3_BUCKET_NAME}.s3.{S3_REGION_NAME}.amazonaws.com/{filename}"
+
+    except NoCredentialsError:
+        raise Exception("AWS credentials not found.")
+    except Exception as e:
+        # 실패 시 업로드 중지하고 실패한 부분 삭제
+        s3_client.abort_multipart_upload(
+            Bucket=S3_BUCKET_NAME,
+            Key=filename,
+            UploadId=upload_id
+        )
+        raise e
+    
+'''
 # S3에 파일을 업로드하는 함수
 def upload_to_s3(file, filename, content_type):
     try:
@@ -39,38 +165,27 @@ def upload_to_s3(file, filename, content_type):
         )
         return f"https://{S3_BUCKET_NAME}.s3.{S3_REGION_NAME}.amazonaws.com/{filename}"
     except NoCredentialsError:
-        raise Exception("AWS credentials not found.")
-
-# S3에서 파일 다운로드 함수
-def download_from_s3(filename, download_path):
-    try:
-        # 파일 존재 여부 확인
-        s3_client.head_object(Bucket=S3_BUCKET_NAME, Key=filename)
-
-        # S3에서 파일 다운로드
-        s3_client.download_file(
-            Bucket=S3_BUCKET_NAME,
-            Key=filename,
-            Filename=download_path
-        )
-        return f"파일이 '{download_path}'로 다운로드되었습니다."
-    except NoCredentialsError:
-        return "AWS 자격 증명이 누락되었습니다."
-    except ClientError as e:
-        if e.response['Error']['Code'] == '404':
-            return "파일이 S3에 존재하지 않습니다."
-        else:
-            return f"파일 다운로드 실패: {str(e)}"
+        raise Exception("AWS credentials not found.")'''
 
 # 영상 처리를 비동기로 수행하는 함수
 def process_video(s3_url: str, task_id: str):
-    time.sleep(5)
-    task_status[task_id] = "완료"  # 작업 상태 업데이트
+    time.sleep(3)
+    print(f"------------------{task_id} 작업------------------")
+    print("------------------인물 감지 및 클러스터링 시작: {s3_url}------------------")
+    representative_images = face_detection_and_clustering(s3_url, task_id)  # Face Detection and Clustering
+    image_urls = [upload_to_s3(open(image_path, 'rb'), os.path.basename(image_path), mimetypes.guess_type(image_path)[0] or 'application/octet-stream') for image_path in representative_images]
+    delete_specified_files(task_id, TEMP_DIR)
+    print(f"------------------인물 감지 및 클러스터링 완료 -> {image_urls}------------------")
+    task_status[task_id] = {
+        "status": "완료",
+        "representative_images": image_urls
+    }
+    return image_urls
 
 # 영상 파일 업로드 및 처리 API
-@app.post("/upload/")
+@app.post("/upload")
 async def upload_video(
-    file: UploadFile = File(...), 
+    file: UploadFile = File(...),
     dramaTitle: str = Form(...),
     background_tasks: BackgroundTasks = None
 ):
@@ -95,18 +210,38 @@ async def upload_video(
 @app.get("/status/{task_id}")
 async def get_task_status(task_id: str):
     status = task_status.get(task_id, "작업 ID가 존재하지 않음")
-    return {"task_id": task_id, "status": status}
-
-# 파일 다운로드 API
-@app.get("/download/{filename}")
-async def download_file(filename: str, download_path: Optional[str] = Query(None, description="저장할 로컬 경로")):
-    if download_path is None:
-        raise HTTPException(status_code=400, detail="다운로드 경로가 필요합니다.")
-
-    # 파일 다운로드
-    result = download_from_s3(filename, download_path)
-    
-    if "다운로드되었습니다" in result:
-        return {"message": result, "local_path": download_path}
+    print(f"task_status: {task_status}")
+    if (status == "작업 ID가 존재하지 않음"):
+        print("아직 작업 ID 할당 전")
+    elif (status == "업로드 및 처리 중") or (status == "처리 중"):
+        return {"task_id": task_id, "status": status, "representative_images": []}
     else:
-        raise HTTPException(status_code=400, detail=result)
+        # 작업이 완료된 경우, 대표 이미지 URL 반환
+        return {
+            "task_id": task_id,
+            "status": status["status"],
+            "representative_images": status["representative_images"]
+        }
+    
+@app.post("/api/videos/{video_id}/actors/select")
+async def select_actors(video_id: str, request: Request):
+    # 요청 본문을 JSON 형태로 출력
+    body = await request.json()  # 요청 본문을 JSON으로 파싱
+    print(f"요청 본문: {body}")  # 요청 본문 출력
+
+    # 데이터가 예상대로 도달했는지 확인
+    if "users" not in body:
+        print("users 필드가 없습니다.")  # users 필드가 없으면 알림
+    elif body['users'] == []:
+        return {"message": "선택된 사용자가 없습니다.", "status": "error"}
+    else:
+        print("users 필드가 존재합니다.")
+
+    # 정상적인 데이터 처리
+    users = body.get("users", [])
+    for user in users: # 나중에 주석 처리 필요함 
+        print(f"이름: {user['name']}, 이미지 경로: {user['imgSrc']}")
+
+    ### 여기서 Person score 처리 필요
+
+    return {"message": "사용자 선택 완료", "video_id": video_id, "data": users, "status": "success"}
