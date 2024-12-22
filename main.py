@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Form, Request
+from fastapi.responses import JSONResponse
 from typing import Dict
 import time
 from botocore.exceptions import NoCredentialsError
@@ -122,7 +123,6 @@ def download_short(file_name: str):
     # 이 예시에서는 각 파일을 별도로 스트리밍으로 전송
     return StreamingResponse(BytesIO(video_file), media_type="video/mp4", headers=headers)
 
-
 def upload_part(file, filename, upload_id, part_number, part_size):
     # 해당 파트 데이터 읽기
     part_data = file.read(part_size)
@@ -200,17 +200,15 @@ def upload_to_s3(file, filename, content_type):
 # 영상 처리를 비동기로 수행하는 함수
 def process_video(s3_url: str, task_id: str):
     time.sleep(3)
-    print(f"------------------{task_id} 작업------------------")
-    print("------------------인물 감지 및 클러스터링 시작: {s3_url}------------------")
-    representative_images = face_detection_and_clustering(s3_url, task_id)  # Face Detection and Clustering
-    image_urls = [upload_to_s3(open(image_path, 'rb'), os.path.basename(image_path), mimetypes.guess_type(image_path)[0] or 'application/octet-stream') for image_path in representative_images]
-    delete_specified_files(task_id, TEMP_DIR)
-    print(f"------------------인물 감지 및 클러스터링 완료 -> {image_urls}------------------")
-    task_status[task_id] = {
-        "status": "완료",
-        "representative_images": image_urls
-    }
-    return image_urls
+    # emotion score & highlight 함수 호출
+    # person score 함수 호출
+
+def process_emotion(task_id: str): # highlight 리스트 [[start1, end1], [start2, end2], [start3, end3]], 추출된 하이라이트 개수
+    task_status[task_id]["status"] = "감정 하이라이트 추출 완료"
+    pass
+
+def process_person_score(s3_url, task_id):
+    pass
 
 # 영상 파일 업로드 및 처리 API
 @app.post("/upload")
@@ -231,27 +229,28 @@ async def upload_video(
 
     return {
         "task_id": task_id,
-        "status": "업로드 및 처리 중",
+        "status": "업로드 완료 및 처리 중",
         "s3_url": s3_url,
         "dramaTitle": dramaTitle  # dramaTitle 반환
     }
 
-# 작업 상태 확인 API
-@app.get("/status/{task_id}")
-async def get_task_status(task_id: str):
-    status = task_status.get(task_id, "작업 ID가 존재하지 않음")
-    print(f"task_status: {task_status}")
-    if (status == "작업 ID가 존재하지 않음"):
-        print("아직 작업 ID 할당 전")
-    elif (status == "업로드 및 처리 중") or (status == "처리 중"):
-        return {"task_id": task_id, "status": status, "representative_images": []}
-    else:
-        # 작업이 완료된 경우, 대표 이미지 URL 반환
-        return {
-            "task_id": task_id,
-            "status": status["status"],
-            "representative_images": status["representative_images"]
-        }
+@app.get("/person/dc")
+def detect_and_cluster(s3_url: str, task_id: str):
+    # 인물 감지 및 클러스터링
+    print(f"------------------{task_id} 작업------------------")
+    print("------------------인물 감지 및 클러스터링 시작: {s3_url}------------------")
+    representative_images = face_detection_and_clustering(
+        s3_url, task_id)  # Face Detection and Clustering
+    image_urls = [upload_to_s3(open(image_path, 'rb'), os.path.basename(image_path), mimetypes.guess_type(
+        image_path)[0] or 'application/octet-stream') for image_path in representative_images]
+    delete_specified_files(task_id, TEMP_DIR)
+    print(
+        f"------------------인물 감지 및 클러스터링 완료 -> {image_urls}------------------")
+    task_status[task_id] = {
+        "status": "인물 감지 및 클러스터링 완료",
+        "representative_images": image_urls
+    }
+    return JSONResponse(content={"message": "인물 감지와 클러스터링이 완료되었습니다.", "image_urls": image_urls})
     
 @app.post("/api/videos/{video_id}/actors/select")
 async def select_actors(video_id: str, request: Request):
@@ -262,6 +261,7 @@ async def select_actors(video_id: str, request: Request):
     # 데이터가 예상대로 도달했는지 확인
     if "users" not in body:
         print("users 필드가 없습니다.")  # users 필드가 없으면 알림
+        return {"message": "users 필드가 존재하지 않습니다.", "status": "error"}
     elif body['users'] == []:
         return {"message": "선택된 사용자가 없습니다.", "status": "error"}
     else:
@@ -271,7 +271,5 @@ async def select_actors(video_id: str, request: Request):
     users = body.get("users", [])
     for user in users: # 나중에 주석 처리 필요함 
         print(f"이름: {user['name']}, 이미지 경로: {user['imgSrc']}")
-
-    ### 여기서 Person score 처리 필요
 
     return {"message": "사용자 선택 완료", "video_id": video_id, "data": users, "status": "success"}
