@@ -1,0 +1,180 @@
+import cv2
+import numpy as np
+import os
+import re
+from deepface import DeepFace
+from multiprocessing import Pool, cpu_count
+from botocore.exceptions import NoCredentialsError
+from s3_client import s3_client
+from imutils import resize
+from dotenv import load_dotenv
+
+load_dotenv()
+
+TEMP_DIR = 'tmp_emotion'
+
+if not os.path.exists(TEMP_DIR):
+    os.makedirs(TEMP_DIR)
+
+
+# --- S3에서 비디오 다운로드 및 감정 분석 ---
+def emotion_detection(s3_url, task_id, emotion_threshold=10):
+    bucket_name, object_key = parse_s3_url(s3_url)
+    local_path = os.path.join(TEMP_DIR, object_key.split('/')[-1])  # 임시 파일 경로 설정
+    print(f"Downloading video from S3 to {local_path}")
+
+    try:
+        s3_client.download_file(bucket_name, object_key, local_path)
+        print(f"Downloaded {local_path}")
+    except NoCredentialsError:
+        raise Exception("AWS credentials not available.")
+    except Exception as e:
+        raise Exception(f"Error downloading from S3: {e}")
+
+    highlights = extract_emotion_highlights(local_path, emotion_threshold)
+
+    delete_file(local_path)
+
+    if not highlights:
+        print("No emotional highlights detected.")
+        return [[], 0]
+
+    # 하이라이트 구간 병합 및 반환
+    merged_intervals = merge_emotional_intervals(highlights)
+    return [merged_intervals, len(merged_intervals)]
+
+
+# --- 비디오에서 감정 분석 하이라이트 추출 ---
+def extract_emotion_highlights(video_path, emotion_threshold=10):
+    cap = cv2.VideoCapture(video_path)
+    frame_idx = 0
+    fps = cap.get(cv2.CAP_PROP_FPS) or 60  # 기본 60 FPS
+    sampling_rate = fps // 1  # 초당 1프레임 추출
+    frames_to_process = []
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        if frame_idx % sampling_rate == 0:
+            frames_to_process.append((frame_idx, frame, fps, emotion_threshold))
+
+        frame_idx += 1
+
+    cap.release()
+
+    # 병렬 처리 실행
+    with Pool(processes=cpu_count()) as pool:
+        results = pool.map(process_frame, frames_to_process)
+
+    # None 값 제거
+    highlights = [result for result in results if result is not None]
+    return highlights
+
+
+def process_frame(frame_info):
+    frame_idx, frame, fps, emotion_threshold = frame_info
+
+    frame_height, frame_width = frame.shape[:2]
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+
+    if len(faces) == 0:
+        return None
+
+    # 가장 큰 얼굴 선택
+    largest_face = max(faces, key=lambda box: box[2] * box[3])
+    x, y, w, h = largest_face
+    face_area = w * h
+    frame_area = frame_width * frame_height
+
+    if face_area / frame_area < 0.05:
+        return None
+
+    # DeepFace로 감정 분석
+    face = frame[y:y+h, x:x+w]
+    try:
+        analysis = DeepFace.analyze(face, actions=["emotion"], enforce_detection=False)
+        if isinstance(analysis, list):
+            analysis = max(analysis, key=lambda result: max(result.get("emotion", {}).values()))
+
+        emotion_scores = analysis.get("emotion", {})
+        max_emotion = max(emotion_scores, key=emotion_scores.get)
+        max_score = emotion_scores[max_emotion]
+        
+        if max_score > emotion_threshold:
+            timestamp = frame_idx / fps
+            print(f"Emotion Detected: {max_emotion} at {timestamp:.2f}s (Score: {max_score:.2f})")
+            return {"timestamp": timestamp, "emotion": max_emotion, "score": max_score}
+
+    except Exception as e:
+        print(f"Error analyzing frame {frame_idx}: {e}")
+        return None
+
+
+# --- 감정 하이라이트 구간 병합 ---
+def merge_emotional_intervals(highlights, min_duration=30, max_duration=60):
+    timestamps = [highlight['timestamp'] for highlight in highlights]
+    timestamps.sort()
+
+    merged_intervals = []
+    start = timestamps[0]
+    end = start
+
+    for i in range(1, len(timestamps)):
+        if timestamps[i] - end <= 5:  # 5초 이내는 같은 구간으로 병합
+            end = timestamps[i]
+        else:
+            duration = end - start
+            if duration >= min_duration:
+                merged_intervals.append([round(start, 2), 
+                    round(min(end, start + max_duration), 2)])
+            start = timestamps[i]
+            end = start
+
+    # 마지막 구간 추가
+    if end - start >= min_duration:
+        merged_intervals.append([start, min(end, start + max_duration)])
+
+    return merged_intervals
+
+
+# --- S3 URL 파싱 ---
+def parse_s3_url(s3_url: str):
+    regex = r"https://([^/]+)\.s3\.[^/]+\.amazonaws\.com/(.+)"
+    match = re.match(regex, s3_url)
+    if not match:
+        raise ValueError(f"Invalid S3 URL: {s3_url}")
+    return match.group(1), match.group(2)
+
+
+# --- 파일 삭제 ---
+def delete_file(file_path):
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+            print(f"File {file_path} deleted.")
+        else:
+            print(f"File {file_path} does not exist.")
+    except Exception as e:
+        print(f"Error deleting file: {e}")
+
+
+# --- 실행 예시 ---
+if __name__ == "__main__":
+    s3_url = "https://my-bucket.s3.ap-northeast-2.amazonaws.com/test_video.mp4"
+    task_id = "12345"
+    emotion_threshold = 0.5
+
+    result = emotion_detection(s3_url, task_id, emotion_threshold)
+    intervals, count = result
+
+    if intervals:
+        print("🔹 감정 하이라이트 구간 및 개수:")
+        print(f"Total Highlights: {count}")
+        for start, end in intervals:
+            print(f"Start: {start:.2f}s, End: {end:.2f}s, Duration: {end - start:.2f}s")
+    else:
+        print("🔸 감정 하이라이트 없음")

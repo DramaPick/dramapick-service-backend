@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 from face_detection_and_clustering import face_detection_and_clustering
+from emotion_detection import emotion_detection
 import mimetypes
 from s3_client import s3_client
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -199,18 +200,47 @@ def upload_to_s3(file, filename, content_type):
 
 # 영상 처리를 비동기로 수행하는 함수
 def process_video(s3_url: str, task_id: str):
-    time.sleep(3)
-    # emotion score & highlight 함수 호출
-    # person score 함수 호출
+    try:
+        print(f"Processing video for task {task_id}...")
+        # 감정 분석 수행
+        result = emotion_detection(s3_url, task_id, emotion_threshold=10)
+        intervals, count = result
 
-def process_emotion(task_id: str): # highlight 리스트 [[start1, end1], [start2, end2], [start3, end3]], 추출된 하이라이트 개수
-    task_status[task_id]["status"] = "감정 하이라이트 추출 완료"
-    pass
+        # 감정 분석 결과 저장
+        task_status[task_id] = {
+            "status": "감정 분석 완료",
+            "highlights": result[0],  # [[start, end], [start, end]]
+            "highlight_count": result[1]  # 하이라이트 개수
+        }
+        print(f"Emotion detection completed for task {task_id}: {result[1]} highlights")
 
-def process_person_score(s3_url, task_id):
-    pass
+    except Exception as e:
+        task_status[task_id] = {"status": "에러 발생", "error": str(e)}
+        print(f"Error processing video {task_id}: {e}")
 
-# 영상 파일 업로드 및 처리 API
+
+# 감정 분석 결과를 조회하는 API 추가
+@app.get("/tasks/{task_id}/emotion_highlights")
+def get_emotion_highlights(task_id: str):
+    task_result = task_status.get(task_id)
+    if not task_result:
+        raise HTTPException(status_code=404, detail="작업 ID를 찾을 수 없습니다.")
+    
+    if task_result.get("status") == "에러 발생":
+        return {
+            "status": "error",
+            "message": "감정 분석 중 에러가 발생했습니다.",
+            "error": task_result.get("error")
+        }
+
+    return {
+        "status": task_result.get("status"),
+        "highlights": task_result.get("highlights", []),
+        "highlight_count": task_result.get("highlight_count", 0)
+    }
+
+
+# 업로드 후 감정 분석 자동 수행
 @app.post("/upload")
 async def upload_video(
     file: UploadFile = File(...),
@@ -218,21 +248,26 @@ async def upload_video(
     background_tasks: BackgroundTasks = None
 ):
     task_id = str(int(time.time()))  # 간단한 작업 ID 생성
-    task_status[task_id] = "처리 중"
+    task_status[task_id] = {"status": "업로드 중"}
 
     # S3에 파일 업로드
     filename = f"{task_id}_{file.filename}"
     s3_url = upload_to_s3(file.file, filename, file.content_type)
 
-    # 비동기로 영상 처리 작업 수행
+    # 비동기로 감정 분석 수행
     background_tasks.add_task(process_video, s3_url, task_id)
 
     return {
         "task_id": task_id,
-        "status": "업로드 완료 및 처리 중",
+        "status": "업로드 완료 및 감정 분석 진행 중",
         "s3_url": s3_url,
-        "dramaTitle": dramaTitle  # dramaTitle 반환
+        "dramaTitle": dramaTitle
     }
+
+
+def process_person_score(s3_url, task_id):
+    pass
+
 
 @app.get("/person/dc")
 def detect_and_cluster(s3_url: str, task_id: str):
@@ -269,7 +304,7 @@ async def select_actors(video_id: str, request: Request):
 
     # 정상적인 데이터 처리
     users = body.get("users", [])
-    for user in users: # 나중에 주석 처리 필요함 
+    for user in users: # 나중에 주석 처리 필요함
         print(f"이름: {user['name']}, 이미지 경로: {user['imgSrc']}")
 
     return {"message": "사용자 선택 완료", "video_id": video_id, "data": users, "status": "success"}
