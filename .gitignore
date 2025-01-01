@@ -4,3 +4,5 @@
 *.json
 __pycache__
 node_modules
+tmp/
+tmp_emotion/
