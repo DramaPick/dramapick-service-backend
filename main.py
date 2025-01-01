@@ -99,7 +99,7 @@ def delete_specified_files(task_id, folder_path=TEMP_DIR):
                     file_path = os.path.join(folder_path, filename)
                     if os.path.isfile(file_path):
                         os.remove(file_path)  # 파일 삭제
-                        print(f"파일 {filename}이 삭제되었습니다.")
+                        # print(f"파일 {filename}이 삭제되었습니다.")
             print(f"task_id: {task_id}와 일치하는 모든 파일 삭제 완료.")
         else:
             print(f"폴더 {folder_path}가 존재하지 않습니다.")
@@ -265,7 +265,8 @@ async def upload_video(
     }
 
 
-def process_person_score(s3_url, task_id):
+def process_person_score(s3_url, task_id, intervals, count):
+    
     pass
 
 
