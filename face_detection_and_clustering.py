@@ -142,6 +142,8 @@ def get_from_s3(s3_url: str):
 # 얼굴 특징 추출 함수
 def extract_face_features(image_path):
     image = cv2.imread(image_path)
+    if image is None:
+        raise ValueError(f"Failed to read image at {image_path}. Please check the file path or format.")
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     encodings = face_recognition.face_encodings(image_rgb)
 
@@ -175,23 +177,16 @@ def calculate_face_angle_parallel(image_paths):
 
 
 def face_detection_and_clustering(s3_url, task_id):
-    # S3에서 비디오 파일을 다운로드하여 임시 파일로 저장
     bucket_name, object_key = parse_s3_url(s3_url)
-    local_path = os.path.join(TEMP_DIR, object_key.split('/')[-1])  # 임시 파일 경로 설정
-    print(f"------------ local_path : {local_path} ------------")
-    try:
-        s3_client.download_file(bucket_name, object_key, local_path)
-        print(f"파일 {local_path}로 S3에서 다운로드 완료")
-    except NoCredentialsError:
-        raise Exception("AWS credentials are not available.")
-    except Exception as e:
-        raise Exception(f"Error downloading from S3: {e}")
+    filename = object_key.split('/')[-1]
+    base_name = filename.split('.')[0]  # 확장자 제외한 파일명
+    local_path = os.path.join("tmp", f"{base_name}.mov")  # 명시적으로 .mov 확장자 지정
+    print(f"------------ FACE DETECTION AND CLUSTERING -> local_path : {local_path} ------------")
 
     cap = cv2.VideoCapture(local_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
 
-    delete_file(local_path)
-
+    # delete_file(local_path)
     frame_interval = int(fps) - 1
     frame_number = 0
 
@@ -211,27 +206,14 @@ def face_detection_and_clustering(s3_url, task_id):
 
     # 이미지 파일 목록
     image_files = os.listdir(TEMP_DIR)
-    image_paths = [os.path.join(TEMP_DIR, file) for file in image_files]
+    image_paths = []
+    for file in image_files:
+        if "mov" in os.path.join(TEMP_DIR, file):
+            pass
+        else:
+            image_paths.append(os.path.join(TEMP_DIR, file))
     
     features, filenames = extract_face_features_parallel(image_paths)
-
-    '''
-    # 얼굴 특징 벡터 저장 리스트
-    features = []
-    filenames = []
-
-    # 얼굴 특징 추출
-    for image_path in image_paths:
-        image = cv2.imread(image_path)
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        encodings = face_recognition.face_encodings(image_rgb)
-
-        if len(encodings) > 0:
-            features.append(encodings[0])
-            filenames.append(image_path)
-        else:
-            print(f"얼굴을 찾을 수 없음: {image_path}")'''
-    
 
     if len(features) == 0:
         print("얼굴 인식된 이미지가 없습니다. 클러스터링을 수행할 수 없습니다.")

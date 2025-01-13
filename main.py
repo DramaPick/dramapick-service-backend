@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Form, Request
 from fastapi.responses import JSONResponse
-from typing import Dict
+from typing import Dict, List, Any
 import time
 from botocore.exceptions import NoCredentialsError
 import os
@@ -15,9 +15,11 @@ from s3_client import s3_client
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import redis
 import requests
+import asyncio
 from bs4 import BeautifulSoup
 import json
 from botocore.exceptions import NoCredentialsError
+from person_score import person_score
 
 TEMP_DIR = 'tmp'
 
@@ -40,6 +42,12 @@ app.add_middleware(
 
 # REDIS 연결 설정
 redis_client = redis.StrictRedis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# 인물(배우) 클래스 
+class Actor:
+    def __init__(self, name: str, imgSrc: str):
+        self.name = name
+        self.imgSrc = imgSrc
 
 def search_drama(drama_title: str):
     # Redis에 캐시 데이터가 있는지 확인
@@ -80,7 +88,26 @@ async def search_drama_api(drama_title: str):
         raise HTTPException(status_code=404, detail="드라마 정보를 찾을 수 없습니다.")
 
 # 작업 상태 저장을 위한 임시 딕셔너리
-task_status: Dict[str, str] = {}
+task_status: List[Dict[str, Any]] = []
+
+# 작업 ID로 task_status 리스트에서 해당 작업을 찾는 함수
+def get_task_by_id(task_id: str):
+    return next((task for task in task_status if task["task_id"] == task_id), None)
+
+# task_status에 새로운 작업을 추가하거나 업데이트하는 함수
+def add_or_update_task(task_id: str, status: str, additional_data: Dict[str, Any] = None):
+    task = get_task_by_id(task_id)
+    if task:
+        # 작업이 이미 존재하면 상태만 업데이트
+        task["status"] = status
+        if additional_data:
+            task.update(additional_data)
+    else:
+        # 작업이 존재하지 않으면 새로 추가
+        new_task = {"task_id": task_id, "status": status}
+        if additional_data:
+            new_task.update(additional_data)
+        task_status.append(new_task)
 
 # S3 설정
 AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
@@ -207,22 +234,21 @@ def process_video(s3_url: str, task_id: str):
         intervals, count = result
 
         # 감정 분석 결과 저장
-        task_status[task_id] = {
-            "status": "감정 분석 완료",
-            "highlights": result[0],  # [[start, end], [start, end]]
-            "highlight_count": result[1]  # 하이라이트 개수
-        }
+        add_or_update_task(task_id, "감정 분석 완료", {
+            "highlights": result[0],
+            "highlight_count": result[1]
+        })
         print(f"Emotion detection completed for task {task_id}: {result[1]} highlights")
 
     except Exception as e:
-        task_status[task_id] = {"status": "에러 발생", "error": str(e)}
+        add_or_update_task(task_id, "에러 발생", {"error": str(e)})
         print(f"Error processing video {task_id}: {e}")
 
 
 # 감정 분석 결과를 조회하는 API 추가
 @app.get("/tasks/{task_id}/emotion_highlights")
 def get_emotion_highlights(task_id: str):
-    task_result = task_status.get(task_id)
+    task_result = get_task_by_id(task_id)
     if not task_result:
         raise HTTPException(status_code=404, detail="작업 ID를 찾을 수 없습니다.")
     
@@ -240,6 +266,27 @@ def get_emotion_highlights(task_id: str):
     }
 
 
+def parse_s3_url(s3_url: str):
+    regex = r"https://([^/]+)\.s3\.[^/]+\.amazonaws\.com/(.+)"
+    match = re.match(regex, s3_url)
+    if not match:
+        raise ValueError(f"Invalid S3 URL: {s3_url}")
+    return match.group(1), match.group(2)
+
+def get_video_from_s3(s3_url):
+    TEMP_DIR = "tmp"
+    bucket_name, object_key = parse_s3_url(s3_url)
+    local_path = os.path.join(TEMP_DIR, object_key.split('/')[-1])  # 임시 파일 경로 설정
+    print(f"Downloading video from S3 to {local_path}")
+
+    try:
+        s3_client.download_file(bucket_name, object_key, local_path)
+        print(f"Downloaded {local_path}")
+    except NoCredentialsError:
+        raise Exception("AWS credentials not available.")
+    except Exception as e:
+        raise Exception(f"Error downloading from S3: {e}")
+
 # 업로드 후 감정 분석 자동 수행
 @app.post("/upload")
 async def upload_video(
@@ -248,11 +295,14 @@ async def upload_video(
     background_tasks: BackgroundTasks = None
 ):
     task_id = str(int(time.time()))  # 간단한 작업 ID 생성
-    task_status[task_id] = {"status": "업로드 중"}
+    add_or_update_task(task_id, "업로드 중")
 
     # S3에 파일 업로드
     filename = f"{task_id}_{file.filename}"
     s3_url = upload_to_s3(file.file, filename, file.content_type)
+
+    # 다운로드 to tmp 폴더(한 번에 비디오 처리 위함)
+    get_video_from_s3(s3_url)
 
     # 비동기로 감정 분석 수행
     background_tasks.add_task(process_video, s3_url, task_id)
@@ -263,12 +313,6 @@ async def upload_video(
         "s3_url": s3_url,
         "dramaTitle": dramaTitle
     }
-
-
-def process_person_score(s3_url, task_id, intervals, count):
-    
-    pass
-
 
 @app.get("/person/dc")
 def detect_and_cluster(s3_url: str, task_id: str):
@@ -282,10 +326,7 @@ def detect_and_cluster(s3_url: str, task_id: str):
     delete_specified_files(task_id, TEMP_DIR)
     print(
         f"------------------인물 감지 및 클러스터링 완료 -> {image_urls}------------------")
-    task_status[task_id] = {
-        "status": "인물 감지 및 클러스터링 완료",
-        "representative_images": image_urls
-    }
+    add_or_update_task(task_id, "인물 감지 및 클러스터링 완료", {"representative_images": image_urls})
     return JSONResponse(content={"message": "인물 감지와 클러스터링이 완료되었습니다.", "image_urls": image_urls})
     
 @app.post("/api/videos/{video_id}/actors/select")
@@ -305,7 +346,30 @@ async def select_actors(video_id: str, request: Request):
 
     # 정상적인 데이터 처리
     users = body.get("users", [])
-    for user in users: # 나중에 주석 처리 필요함
-        print(f"이름: {user['name']}, 이미지 경로: {user['imgSrc']}")
+    task_id = body.get("task_id")
+    s3_url = body.get("s3_url")
+    selected_actors = [Actor(user['name'], user['imgSrc']) for user in users]
+
+    task = get_task_by_id(task_id)
+    task["selected"] = selected_actors
+
+    # task_status에 highlights와 highlight_count가 준비될 때까지 기다림
+    while "highlights" not in task:
+        print(f"Task {task_id}에서 감정 분석 결과가 준비될 때까지 기다리는 중...")
+        await asyncio.sleep(1)  # highlights가 준비되기까지 1초 간격으로 대기
+
+    # person_score 높은 순서 -> 낮은 순서로 정렬된 (내림차순) 하이라이트 리스트 가지고 오기
+    print(f"--------------- task status : {task} ---------------")
+    print(f"--------------- task['highlights'], task['highlight_count'] : {task['highlights'], task['highlight_count']} ---------------")
+    if (len(task['highlights']) == 1):
+        sorted_highlights = task['highlights']
+    else:
+        sorted_highlights = person_score(s3_url, task["highlights"], selected_actors)
+    print(f"person scoring 기반으로 정렬된 하이라이트 : {sorted_highlights}")
+
+    # 정렬된 쇼츠에서 count 개수에 따라 최종 쇼츠 생성하는 부분 코드
+
+    for actor in selected_actors:  # 나중에 주석 처리 필요함
+        print(f"이름: {actor.name}, 이미지 경로: {actor.imgSrc}")
 
     return {"message": "사용자 선택 완료", "video_id": video_id, "data": users, "status": "success"}

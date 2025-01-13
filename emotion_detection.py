@@ -16,20 +16,13 @@ TEMP_DIR = 'tmp_emotion'
 if not os.path.exists(TEMP_DIR):
     os.makedirs(TEMP_DIR)
 
-
 # --- S3에서 비디오 다운로드 및 감정 분석 ---
 def emotion_detection(s3_url, task_id, emotion_threshold=10):
     bucket_name, object_key = parse_s3_url(s3_url)
-    local_path = os.path.join(TEMP_DIR, object_key.split('/')[-1])  # 임시 파일 경로 설정
-    print(f"Downloading video from S3 to {local_path}")
-
-    try:
-        s3_client.download_file(bucket_name, object_key, local_path)
-        print(f"Downloaded {local_path}")
-    except NoCredentialsError:
-        raise Exception("AWS credentials not available.")
-    except Exception as e:
-        raise Exception(f"Error downloading from S3: {e}")
+    filename = object_key.split('/')[-1]
+    base_name = filename.split('.')[0]  # 확장자 제외한 파일명
+    local_path = os.path.join("tmp", f"{base_name}.mov")  # 명시적으로 .mov 확장자 지정
+    print(f"------------ EMOTION DETECTION local_path : {local_path} ------------")
 
     highlights = extract_emotion_highlights(local_path, emotion_threshold)
 
@@ -112,7 +105,6 @@ def process_frame(frame_info):
     except Exception as e:
         print(f"Error analyzing frame {frame_idx}: {e}")
         return None
-
 
 # --- 감정 하이라이트 구간 병합 ---
 def merge_emotional_intervals(highlights, min_duration=30, max_duration=60):
