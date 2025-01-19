@@ -20,6 +20,7 @@ from bs4 import BeautifulSoup
 import json
 from botocore.exceptions import NoCredentialsError
 from person_score import person_score
+import re
 
 TEMP_DIR = 'tmp'
 
