@@ -22,6 +22,7 @@ import json
 from person_score import person_score
 import re
 from adjust_highlights import scene_detection, save_highlights_with_moviepy
+from drama_crawling import search_drama, get_drama
 
 TEMP_DIR = 'tmp'
 
@@ -44,6 +45,24 @@ app.add_middleware(
 
 # REDIS 연결 설정
 redis_client = redis.StrictRedis(host="localhost", port=6379, db=0, decode_responses=True)
+
+@app.get("/search/")
+async def search_drama_api(drama_title: str):
+    # 드라마 정보를 검색
+    result = search_drama(drama_title)
+    if result:
+        return {"status": "success", "data": result}
+    else:
+        raise HTTPException(status_code=404, detail="드라마 정보를 찾을 수 없습니다.")
+
+@app.get("/get_drama/")
+async def get_drama_api(drama_title: str):
+    # Redis에서 데이터 조회
+    result = get_drama(drama_title)
+    if result:
+        return result
+    else:
+        raise HTTPException(status_code=404, detail="드라마 정보를 찾을 수 없습니다.")
 
 # 인물(배우) 클래스 
 class Actor:
