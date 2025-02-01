@@ -13,13 +13,11 @@ from emotion_detection import emotion_detection
 import mimetypes
 from s3_client import s3_client
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import redis
-import requests
 import asyncio
-from bs4 import BeautifulSoup
-import json
 from botocore.exceptions import NoCredentialsError
 from person_score import person_score
+import re
+from drama_crawling import search_drama, get_drama
 
 TEMP_DIR = 'tmp'
 
@@ -40,43 +38,29 @@ app.add_middleware(
     allow_headers=["*"],  # 모든 헤더 허용
 )
 
-# REDIS 연결 설정
-redis_client = redis.StrictRedis(host="localhost", port=6379, db=0, decode_responses=True)
+@app.get("/search/")
+async def search_drama_api(drama_title: str):
+    # 드라마 정보를 검색
+    result = search_drama(drama_title)
+    if result:
+        return {"status": "success", "data": result}
+    else:
+        raise HTTPException(status_code=404, detail="드라마 정보를 찾을 수 없습니다.")
+
+@app.get("/get_drama/")
+async def get_drama_api(drama_title: str):
+    # Redis에서 데이터 조회
+    result = get_drama(drama_title)
+    if result:
+        return result
+    else:
+        raise HTTPException(status_code=404, detail="드라마 정보를 찾을 수 없습니다.")
 
 # 인물(배우) 클래스 
 class Actor:
     def __init__(self, name: str, imgSrc: str):
         self.name = name
         self.imgSrc = imgSrc
-
-def search_drama(drama_title: str):
-    # Redis에 캐시 데이터가 있는지 확인
-    if redis_client.exists(drama_title):
-        cached_data = redis_client.get(drama_title)
-        return json.loads(cached_data)
-
-    # 네이버에서 드라마 정보 크롤링
-    search_url = f"https://search.naver.com/search.naver?query={drama_title}"
-    response = requests.get(search_url)
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    # 크롤링 데이터 추출 (HTML 구조에 맞게 수정 필요)
-    try:
-        title = soup.select_one(".title_selector").text.strip()
-        broadcaster = soup.select_one(".broadcaster_selector").text.strip()
-        air_date = soup.select_one(".air_date_selector").text.strip()
-    except AttributeError:
-        return None
-
-    # Redis에 데이터 저장
-    drama_data = {
-        "title": title,
-        "broadcaster": broadcaster,
-        "air_date": air_date
-    }
-    redis_client.set(drama_title, json.dumps(drama_data))
-
-    return drama_data
 
 @app.get("/search/")
 async def search_drama_api(drama_title: str):
