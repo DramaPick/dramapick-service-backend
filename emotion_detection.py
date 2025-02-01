@@ -26,7 +26,7 @@ def emotion_detection(s3_url, task_id, emotion_threshold=10):
 
     highlights = extract_emotion_highlights(local_path, emotion_threshold)
 
-    delete_file(local_path)
+    # delete_file(local_path)
 
     if not highlights:
         print("No emotional highlights detected.")

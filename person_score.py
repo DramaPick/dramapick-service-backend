@@ -177,7 +177,7 @@ def person_score(s3_url, intervals, selected_actors):
 
     # 작업이 끝난 후에 리소스 정리
     cap.release()
-    delete_file(local_path)
+    # delete_file(local_path)
     for img_path in img_src_list:
         delete_file(img_path)
 

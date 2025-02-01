@@ -141,6 +141,8 @@ def get_from_s3(s3_url: str):
 
 # 얼굴 특징 추출 함수
 def extract_face_features(image_path):
+    if ".mp4" in image_path or ".mov" in image_path:
+        return
     image = cv2.imread(image_path)
     if image is None:
         raise ValueError(f"Failed to read image at {image_path}. Please check the file path or format.")

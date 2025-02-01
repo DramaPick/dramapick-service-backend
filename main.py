@@ -1,3 +1,4 @@
+from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Form, Request
 from fastapi.responses import JSONResponse
 from typing import Dict, List, Any
@@ -18,9 +19,9 @@ import requests
 import asyncio
 from bs4 import BeautifulSoup
 import json
-from botocore.exceptions import NoCredentialsError
 from person_score import person_score
 import re
+from adjust_highlights import scene_detection, save_highlights_with_moviepy
 
 TEMP_DIR = 'tmp'
 
@@ -165,7 +166,6 @@ def upload_part(file, filename, upload_id, part_number, part_size):
         Body=part_data
     )
     return part_number, part_response['ETag']
-
 
 def upload_to_s3(file, filename, content_type):
     try:
@@ -361,16 +361,60 @@ async def select_actors(video_id: str, request: Request):
 
     # person_score 높은 순서 -> 낮은 순서로 정렬된 (내림차순) 하이라이트 리스트 가지고 오기
     print(f"--------------- task status : {task} ---------------")
-    print(f"--------------- task['highlights'], task['highlight_count'] : {task['highlights'], task['highlight_count']} ---------------")
+    # print(f"--------------- task['highlights'], task['highlight_count'] : {task['highlights'], task['highlight_count']} ---------------")
     if (len(task['highlights']) == 1):
         sorted_highlights = task['highlights']
     else:
         sorted_highlights = person_score(s3_url, task["highlights"], selected_actors)
     print(f"person scoring 기반으로 정렬된 하이라이트 : {sorted_highlights}")
 
-    # 정렬된 쇼츠에서 count 개수에 따라 최종 쇼츠 생성하는 부분 코드
+    return {"message": "사용자 선택 완료", "video_id": video_id, "data": users, "status": "success", "sorted_highlights": sorted_highlights}
 
-    for actor in selected_actors:  # 나중에 주석 처리 필요함
-        print(f"이름: {actor.name}, 이미지 경로: {actor.imgSrc}")
+class HighlightRequest(BaseModel):
+    s3_url: str
+    task_id: str
+    highlights: List[List[float]]
 
-    return {"message": "사용자 선택 완료", "video_id": video_id, "data": users, "status": "success"}
+@app.post("/highlight/adjust")
+async def detect_scenes(request: HighlightRequest):
+    s3_url = request.s3_url
+    task_id = request.task_id
+    highlights = request.highlights
+
+    print(f"------------------{task_id} 작업------------------")
+    print(f"------------------하이라이트 조정 시작: {s3_url}, {highlights}------------------")
+
+    _, object_key = parse_s3_url(s3_url)
+    filename = object_key.split('/')[-1]
+    base_name = filename.split('.')[0]
+    local_path = os.path.join(TEMP_DIR, f"{base_name}.mov")  # .mov 확장자 사용
+
+    adjusted_highlights = scene_detection(local_path, highlights)  # scene_detection 함수 실행
+
+    add_or_update_task(task_id, "하이라이트 조정 완료", {
+        "adjusted_highlights": adjusted_highlights
+    })
+
+    print(f"------------------하이라이트 조정 완료 -> {adjusted_highlights}------------------")
+    return JSONResponse(content={"message": "하이라이트 조정이 완료되었습니다.", "adjusted_highlights": adjusted_highlights})
+
+@app.post("/highlights/save")
+async def save_highlight_clips(request: HighlightRequest):
+    s3_url = request.s3_url
+    task_id = request.task_id
+    highlights = request.highlights
+
+    print(f"------------------{task_id} 작업------------------")
+    print(f"------------------최종 쇼츠 제작 시작: {s3_url}, {highlights}------------------")
+
+    _, object_key = parse_s3_url(s3_url)
+    filename = object_key.split('/')[-1]
+    base_name = filename.split('.')[0]
+    local_path = os.path.join(TEMP_DIR, f"{base_name}.mov")
+
+    url_list = save_highlights_with_moviepy(local_path, highlights, task_id)
+
+    os.remove(local_path)
+
+    print(f"------------------최종 쇼츠 저장 완료 -> {url_list}------------------")
+    return JSONResponse(content={"message": "최종 쇼츠 저장 완료", "s3_url_list": url_list})
