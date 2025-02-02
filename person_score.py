@@ -155,8 +155,7 @@ def person_score(s3_url, intervals, selected_actors):
 
             total_frames_in_highlight += 1
 
-            # 1초씩 이동
-            current_time += 1
+            current_time += 3
             cap.set(cv2.CAP_PROP_POS_MSEC, current_time * 1000)
 
         print(f"actor_appearance_count : {actor_appearance_count}")
