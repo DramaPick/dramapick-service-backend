@@ -24,11 +24,17 @@ def search_drama(drama_title: str):
     response = requests.get(search_url, headers=headers)
     tree = html.fromstring(response.content)
 
+    print(f"📌 reponse : {response}")
+    print(f"📌 tree : {tree}")
+
     # 크롤링 데이터 추출 (XPath 사용)
     try:
         title = tree.xpath("//div[contains(@class, 'title_area')]/h2/span/strong/a/text()")[0].strip()  # 드라마 제목
+        print(f"💬 title : {title}")
         broadcaster = tree.xpath("//div[contains(@class, 'detail_info')]/dl/div[1]/dd/a/text()")[0].strip()  # 방송사
+        print(f"💬 broadcaster : {broadcaster}")
         air_date = tree.xpath("//div[contains(@class, 'detail_info')]/dl/div[1]/dd/span/text()")[0].strip()  # 방영일
+        print(f"💬 air_date : {air_date}")
     except IndexError:
         return None
 
