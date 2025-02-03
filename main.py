@@ -24,6 +24,7 @@ import re
 from adjust_highlights import scene_detection, save_highlights_with_moviepy
 from drama_crawling import search_drama, get_drama
 from lxml import html
+from clip_video_info import clip_text
 
 TEMP_DIR = 'tmp'
 
@@ -384,16 +385,32 @@ async def save_highlight_clips(request: HighlightRequest):
     highlights = request.highlights
 
     print(f"------------------{task_id} 작업------------------")
-    print(f"------------------최종 쇼츠 제작 시작: {s3_url}, {highlights}------------------")
+    print(f"------------------쇼츠 제작 시작: {s3_url}, {highlights}------------------")
 
     _, object_key = parse_s3_url(s3_url)
     filename = object_key.split('/')[-1]
     base_name = filename.split('.')[0]
     local_path = os.path.join(TEMP_DIR, f"{base_name}.mov")
 
-    url_list = save_highlights_with_moviepy(local_path, highlights, task_id)
+    local_path_list = save_highlights_with_moviepy(local_path, highlights, task_id)
 
+    print(f"------------------쇼츠 저장 완료 -> {local_path_list}------------------")
     os.remove(local_path)
+    return JSONResponse(content={"message": "쇼츠 저장 완료", "local_path_list": local_path_list})
 
-    print(f"------------------최종 쇼츠 저장 완료 -> {url_list}------------------")
-    return JSONResponse(content={"message": "최종 쇼츠 저장 완료", "s3_url_list": url_list})
+class ForTextRequest(BaseModel):
+    local_path_list: List[str]
+    task_id: str
+    drama_title: str
+
+@app.post("/highlights/clip")
+def clip_text_in_video(request: ForTextRequest):
+    local_path_list = request.local_path_list
+    task_id = request.task_id
+    drama_title = request.drama_title
+
+    print("------------------{task_id} 비디오에 텍스트 삽입 작업------------------")
+
+    s3_url_list = clip_text(local_path_list, task_id, drama_title)
+    print(f"s3_url_list: {s3_url_list}")
+    return JSONResponse(content={"message": "쇼츠에 텍스트 삽입 완료", "s3_url_list": s3_url_list})
