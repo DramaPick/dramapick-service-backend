@@ -51,14 +51,35 @@ def upload_to_s3(file_path, s3_filename, bucket_name=S3_BUCKET_NAME):
         return None
 
 
-def clip_text(local_path_list, task_id, drama_title):
+def crop_and_pad_to_1080x1920(clip):
+    clip = clip.resize(height=960)
+
+    new_width, _ = clip.size
+    if new_width < 1080:
+        clip = clip.resize(width=1080)
+
+    _, final_height = clip.size
+    if final_height < 1920:
+        clip = clip.on_color(size=(1080, 1920), color=(0, 0, 0), pos=('center', 'center'))
+    
+    return clip
+
+
+def clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highlights):
+    TEMP_DIR = 'tmp'
+    if not os.path.exists(TEMP_DIR):
+        os.makedirs(TEMP_DIR)
+
     font_path = "/System/Library/Fonts/AppleSDGothicNeo.ttc"
 
     try:
-        idx = 1
+        video = VideoFileClip(local_path)
+
         url_list = []
-        for local_path in local_path_list:
-            video = VideoFileClip(local_path)
+        for idx, (start, end) in enumerate(adjusted_highlights):
+            highlight_clip = video.subclip(start, end)
+
+            highlight_clip = crop_and_pad_to_1080x1920(highlight_clip)
 
             drama_info = get_drama_api(drama_title)
             if not drama_info:
@@ -67,18 +88,17 @@ def clip_text(local_path_list, task_id, drama_title):
                     raise ValueError("❌ 드라마 정보를 찾을 수 없습니다.")
 
             text1 = drama_title.encode('utf-8')
-            txt_clip = TextClip(text1, fontsize=55, color='white', font=font_path)
-            txt_clip = txt_clip.set_position(('center', video.h - 450)).set_duration(video.duration)
+            txt_clip1 = TextClip(text1, fontsize=55, color='white', font=font_path)
+            txt_clip1 = txt_clip1.set_position(('center', highlight_clip.h - 450)).set_duration(video.duration)
 
             text2 = f"{drama_info['broadcaster']} - {drama_info['air_date']}"
             txt_clip2 = TextClip(text2, fontsize=30, color='white', font=font_path)
-            txt_clip2 = txt_clip2.set_position(('center', video.h - 350)).set_duration(video.duration)
+            txt_clip2 = txt_clip2.set_position(('center', highlight_clip.h - 350)).set_duration(video.duration)
 
-            TEMP_DIR = "tmp"
-            filename = f"{task_id}_highlight_with_info_{idx}.mp4"
+            filename = f"{task_id}_highlight_with_info_{idx+1}.mp4"
             output_path = os.path.join(TEMP_DIR, filename)  # 임시 파일 경로 설정
             
-            result = CompositeVideoClip([video, txt_clip, txt_clip2])
+            result = CompositeVideoClip([highlight_clip, txt_clip1, txt_clip2])
             result.write_videofile(output_path)
 
             s3_url_ = upload_to_s3(output_path, filename)
@@ -89,7 +109,6 @@ def clip_text(local_path_list, task_id, drama_title):
             os.remove(local_path)
             os.remove(output_path)
 
-            idx += 1
         return url_list
     
     except ValueError as e:

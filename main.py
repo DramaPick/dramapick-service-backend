@@ -21,10 +21,10 @@ from bs4 import BeautifulSoup
 import json
 from person_score import person_score
 import re
-from adjust_highlights import scene_detection, save_highlights_with_moviepy
+from adjust_highlights import scene_detection
 from drama_crawling import search_drama, get_drama
 from lxml import html
-from clip_video_info import clip_text
+from clip_video_info import clip_and_save_highlights
 
 TEMP_DIR = 'tmp'
 
@@ -378,39 +378,28 @@ async def detect_scenes(request: HighlightRequest):
     print(f"------------------하이라이트 조정 완료 -> {adjusted_highlights}------------------")
     return JSONResponse(content={"message": "하이라이트 조정이 완료되었습니다.", "adjusted_highlights": adjusted_highlights})
 
+class SaveClipRequest(BaseModel):
+    s3_url: str
+    task_id: str
+    drama_title: str
+    adjusted_highlights: List[List[float]]
+    
 @app.post("/highlights/save")
-async def save_highlight_clips(request: HighlightRequest):
+async def save_highlight_with_info(request: SaveClipRequest):
     s3_url = request.s3_url
+    adjusted_highlights = request.adjusted_highlights
     task_id = request.task_id
-    highlights = request.highlights
+    drama_title = request.drama_title
 
     print(f"------------------{task_id} 작업------------------")
-    print(f"------------------쇼츠 제작 시작: {s3_url}, {highlights}------------------")
+    print(f"------------------쇼츠 제작 시작: {s3_url}, {adjusted_highlights}------------------")
 
     _, object_key = parse_s3_url(s3_url)
     filename = object_key.split('/')[-1]
     base_name = filename.split('.')[0]
     local_path = os.path.join(TEMP_DIR, f"{base_name}.mov")
 
-    local_path_list = save_highlights_with_moviepy(local_path, highlights, task_id)
+    s3_url_list = clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highlights)
 
-    print(f"------------------쇼츠 저장 완료 -> {local_path_list}------------------")
-    os.remove(local_path)
-    return JSONResponse(content={"message": "쇼츠 저장 완료", "local_path_list": local_path_list})
-
-class ForTextRequest(BaseModel):
-    local_path_list: List[str]
-    task_id: str
-    drama_title: str
-
-@app.post("/highlights/clip")
-def clip_text_in_video(request: ForTextRequest):
-    local_path_list = request.local_path_list
-    task_id = request.task_id
-    drama_title = request.drama_title
-
-    print("------------------{task_id} 비디오에 텍스트 삽입 작업------------------")
-
-    s3_url_list = clip_text(local_path_list, task_id, drama_title)
-    print(f"s3_url_list: {s3_url_list}")
-    return JSONResponse(content={"message": "쇼츠에 텍스트 삽입 완료", "s3_url_list": s3_url_list})
+    print(f"------------------쇼츠 저장 완료 -> {s3_url_list}------------------")
+    return JSONResponse(content={"message": "쇼츠 저장 완료", "s3_url_list": s3_url_list})

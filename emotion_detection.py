@@ -42,7 +42,7 @@ def extract_emotion_highlights(video_path, emotion_threshold=10):
     cap = cv2.VideoCapture(video_path)
     frame_idx = 0
     fps = cap.get(cv2.CAP_PROP_FPS) or 60  # 기본 60 FPS
-    sampling_rate = fps // 1  # 초당 1프레임 추출
+    sampling_rate = (fps // 1) * 2
     frames_to_process = []
 
     while cap.isOpened():
@@ -116,7 +116,7 @@ def merge_emotional_intervals(highlights, min_duration=30, max_duration=60):
     end = start
 
     for i in range(1, len(timestamps)):
-        if timestamps[i] - end <= 5:  # 5초 이내는 같은 구간으로 병합
+        if timestamps[i] - end <= 10:  # 5초 이내는 같은 구간으로 병합
             end = timestamps[i]
         else:
             duration = end - start
