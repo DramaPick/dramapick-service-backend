@@ -7,9 +7,17 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 import os
 import warnings
 from datetime import datetime
+from openai import OpenAI
+from typing import List
+from dotenv import load_dotenv
 
 warnings.filterwarnings('ignore')
 
+# .env 파일에서 환경 변수 로드
+load_dotenv()
+
+# OpenAI API 키 설정
+# openai.api_key = os.getenv("GPT_API_KEY")
 
 def parse_time(srt_time_str):
     """SRT 시간 문자열을 timedelta로 변환"""
@@ -178,6 +186,33 @@ def find_end_time_after(audio_txt_path, start_time_sec, flag):
     return end_time
 
 
+def extract_dialogues_for_highlights(srt_path, highlights):
+    """
+    하이라이트 구간 동안 나오는 대사만 추출합니다.
+
+    :param srt_path: SRT 파일 경로
+    :param highlights: 하이라이트 구간 리스트 (시작 시간, 종료 시간)
+    :return: 하이라이트 구간 동안의 대사 리스트
+    """
+    subs = pysrt.open(srt_path)
+    highlight_dialogues = []
+
+    for start, end in highlights:
+        adjusted_start = max(0, start - 20)
+        adjusted_end = max(0, end + 10)
+        start_time = (datetime.min + timedelta(seconds=adjusted_start)).time()
+        end_time = (datetime.min + timedelta(seconds=adjusted_end)).time()
+        dialogues = []
+
+        for sub in subs:
+            if sub.start.to_time() >= start_time and sub.end.to_time() <= end_time:
+                dialogues.append(sub.text)
+
+        highlight_dialogues.append(dialogues)
+
+    return highlight_dialogues
+
+
 def scene_detection(local_path, highlights):
     cap = cv2.VideoCapture(local_path)
 
@@ -208,15 +243,25 @@ def scene_detection(local_path, highlights):
     dialoges_final_path = "merged.srt"
     merge_srt_lines(dialoges_srt_path, dialoges_final_path, min_gap=1.0)
 
+    video_duration = get_video_duration(local_path)
+
     adjusted_highlights = []
     for start, end in highlights:
         adjusted_start = find_end_time_after(
             dialoges_final_path, start - 15, flag="s")
         adjusted_end = find_end_time_after(dialoges_final_path, end, flag="e")
 
+        # 하이라이트 구간의 끝 시간이 비디오 길이를 초과하지 않도록 조정
+        if adjusted_end > video_duration:
+            adjusted_end = video_duration
+
         adjusted_highlights.append([adjusted_start, adjusted_end])
 
     print("Adjusted highlights:", adjusted_highlights)
+
+    # 하이라이트 구간 동안의 대사 추출
+    highlight_dialogues = extract_dialogues_for_highlights(dialoges_final_path, adjusted_highlights)
+    print("Highlight dialogues:", highlight_dialogues)
 
     # Cleanup
     if cap:
@@ -226,10 +271,10 @@ def scene_detection(local_path, highlights):
     os.remove(dialoges_srt_path)
     os.remove(dialoges_final_path)
 
-    return adjusted_highlights
+    return adjusted_highlights, highlight_dialogues
 
 
-def save_highlights_with_moviepy(local_path, adjusted_highlights, output_dir):
+def save_highlights_with_moviepy(local_path, adjusted_highlights, highlight_dialogues, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
     video = VideoFileClip(local_path)
@@ -243,15 +288,59 @@ def save_highlights_with_moviepy(local_path, adjusted_highlights, output_dir):
         highlight_clip.write_videofile(
             output_path, codec="libx264", audio_codec="aac")
 
+        # 하이라이트 구간 동안의 대사로 제목 생성
+        dialogues = highlight_dialogues[idx]
+        title = generate_highlight_title(dialogues)
+        print(f"Generated title for highlight {idx + 1}: {title}")
+
         print(f"Saved highlight {idx + 1} to {output_path}")
 
     # 자원 해제
     video.close()
 
 
-# highlights = [[101.3, 141.63], [196.7, 256.7], [321.61, 381.61], [469.14, 529.14], [547.82, 580.28]]
-highlights = [[48.32, 83.82], [127.21, 159.75]]
+# OpenAI 클라이언트 생성 (환경 변수에서 API 키 가져오기)
+client = OpenAI(api_key=os.getenv("GPT_API_KEY"))
+
+def generate_highlight_title(dialogues: List[str]) -> str:
+    """
+    하이라이트 구간의 대사들로부터 제목을 생성합니다.
+
+    :param dialogues: 하이라이트 구간의 대사 리스트
+    :return: 생성된 제목
+    """
+    # 대사들을 하나의 문자열로 결합
+    dialogues_text = "\n".join(dialogues)
+
+    # OpenAI API를 사용하여 제목 생성
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "당신은 사람들이 주목할 만한 컨텐츠를 기획하는 감독입니다."},
+            {"role": "user", "content": f"다음은 드라마의 일부 대사들입니다. 이를 기반으로, 유튜브 쇼츠 하이라이트의 제목을 생성해 주세요. 단, 대사 인식이 제대로 되어 있지 않으니 의미가 불분명한 단어 사용은 무조건 피해주세요.:\n\n{dialogues_text}\n\n제목:"}
+        ],
+        max_tokens=50,
+        temperature=0.7,
+    )
+
+    # 생성된 제목 반환
+    return response.choices[0].message.content.strip()
+
+
+def get_video_duration(video_path):
+    """
+    비디오 파일의 길이를 초 단위로 반환합니다.
+    :param video_path: 비디오 파일 경로
+    :return: 비디오 길이 (초 단위)
+    """
+    video = VideoFileClip(video_path)
+    duration = video.duration
+    video.close()
+    return duration
+
+
+highlights = [[101.3, 141.63], [196.7, 256.7], [321.61, 381.61], [469.14, 529.14], [547.82, 580.28]]
 # local_path = "./눈물의여왕.mov"
 local_path = "./테스트_비디오.mov"
-adjusted_highlights = scene_detection(local_path, highlights)
-save_highlights_with_moviepy(local_path, adjusted_highlights, output_dir="shorts")
+adjusted_highlights, highlight_dialogues = scene_detection(local_path, highlights)
+save_highlights_with_moviepy(local_path, adjusted_highlights, highlight_dialogues, output_dir="shorts")
