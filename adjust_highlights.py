@@ -1,22 +1,26 @@
-import pysrt
-from datetime import datetime, timedelta
-import subprocess
-import whisper
-import cv2
-from moviepy.editor import VideoFileClip
 import os
 import warnings
-from datetime import datetime
-from google.cloud import speech
+from datetime import datetime, timedelta
+import subprocess
+import cv2
+from moviepy.editor import VideoFileClip
+from google.cloud import speech, storage
 import io
 from openai import OpenAI
 from typing import List
 from dotenv import load_dotenv
+from pydub import AudioSegment
+import chardet
 
-
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "dramapickstt-4efdec08fb9c.json"
 warnings.filterwarnings('ignore')
 
+# .env 파일에서 환경 변수 로드
+load_dotenv()
+
+# OpenAI API 키 설정
+# openai.api_key = os.getenv("GPT_API_KEY")
+
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "dramapickstt-4efdec08fb9c.json"
 
 def parse_time(srt_time_str):
     """SRT 시간 문자열을 timedelta로 변환"""
@@ -28,21 +32,21 @@ def time_to_srt_format(time):
     return str(time).split('.')[0].replace(',', '.')
 
 
-def transcribe_audio(audio_path):
+def transcribe_audio(audio_path, bucket_name):
     """Google STT API를 사용하여 오디오 파일을 텍스트로 변환"""
+    gcs_uri = upload_to_gcs(bucket_name, audio_path, os.path.basename(audio_path))
+
     client = speech.SpeechClient()
 
-    with io.open(audio_path, "rb") as audio_file:
-        content = audio_file.read()
-
-    audio = speech.RecognitionAudio(content=content)
+    audio = speech.RecognitionAudio(uri=gcs_uri)
     config = speech.RecognitionConfig(
         encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
         sample_rate_hertz=16000,
         language_code="ko-KR",
     )
 
-    response = client.recognize(config=config, audio=audio)
+    operation = client.long_running_recognize(config=config, audio=audio)
+    response = operation.result(timeout=90)
 
     transcripts = []
     for result in response.results:
@@ -51,40 +55,32 @@ def transcribe_audio(audio_path):
     return transcripts
 
 
-def merge_srt_lines(input_srt_path, output_srt_path, min_gap=1.0):
+def merge_srt_lines(audio_path, output_srt_path, bucket_name, min_gap=1.0):
     """
-    SRT 파일에서 두 자막 간의 시간 차이를 계산하고, 
-    시간 차이가 min_gap 이하인 자막들을 합침.
-
-    :param input_srt_path: 입력 SRT 파일 경로
-    :param output_srt_path: 출력 SRT 파일 경로
-    :param min_gap: 자막 간 간격이 min_gap 이하일 경우 합침
+    Google STT API를 사용하여 오디오 파일을 텍스트로 변환하고,
+    변환된 텍스트를 기반으로 자막을 생성합니다.
     """
-    # Google STT API를 사용하여 오디오 파일을 텍스트로 변환
-    transcripts = pysrt.open(input_srt_path)
-    # transcripts = transcribe_audio(input_srt_path)
+    transcripts = transcribe_audio(audio_path, bucket_name)
 
     # 자막 합치기
     merged_subs = []
     current_sub = None
-    for i in range(len(transcripts)):
-        sub = transcripts[i]
+    for i, transcript in enumerate(transcripts):
         if current_sub is None:
-            current_sub = sub
+            current_sub = {"start": i * 5, "end": (i + 1) * 5, "text": transcript}
             continue
 
         # 자막 간의 간격 계산
-        time_gap = (parse_time(sub.start.to_time().strftime("%H:%M:%S,%f")) -
-                    parse_time(current_sub.end.to_time().strftime("%H:%M:%S,%f"))).total_seconds()
+        time_gap = (i * 5) - current_sub["end"]
 
         if time_gap < min_gap:
             # 간격이 min_gap 이하이면 자막을 합침
-            current_sub.text += ' ' + sub.text
-            current_sub.end = sub.end
+            current_sub["text"] += ' ' + transcript
+            current_sub["end"] = (i + 1) * 5
         else:
             # 자막 간격이 min_gap 초 이상이면 새로운 자막으로 저장
             merged_subs.append(current_sub)
-            current_sub = sub
+            current_sub = {"start": i * 5, "end": (i + 1) * 5, "text": transcript}
 
     # 마지막 자막을 추가
     if current_sub is not None:
@@ -93,9 +89,11 @@ def merge_srt_lines(input_srt_path, output_srt_path, min_gap=1.0):
     # 합쳐진 자막 저장
     with open(output_srt_path, 'w', encoding='utf-8') as f:
         for index, sub in enumerate(merged_subs, start=1):
+            start_time_str = format_time(sub["start"])
+            end_time_str = format_time(sub["end"])
             f.write(f"{index}\n")
-            f.write(f"{sub.start} --> {sub.end}\n")
-            f.write(f"{sub.text}\n\n")
+            f.write(f"{start_time_str} --> {end_time_str}\n")
+            f.write(f"{sub['text']}\n\n")
 
     print("---------- Merged ----------")
 
@@ -126,25 +124,19 @@ def extract_audio(video_path, audio_output_path):
         print(f"Error extracting audio: {e.stderr.decode()}")
 
 
-def generate_srt_from_audio(audio_path, srt_output_path):
-    model = whisper.load_model("base")  # Whisper 모델 로드
-
-    # 오디오 파일을 텍스트로 변환 (타임스탬프 포함)
-    result = model.transcribe(audio_path, word_timestamps=True)
+def generate_srt_from_audio(audio_path, srt_output_path, bucket_name):
+    transcripts = transcribe_audio(audio_path, bucket_name)
 
     with open(srt_output_path, 'w', encoding='utf-8') as f:
         index = 1
-        for segment in result['segments']:
-            start_time = segment['start']
-            end_time = segment['end']
-            text = segment['text']
+        for transcript in transcripts:
+            start_time = format_time(index * 5)  # 임의의 시작 시간 (5초 간격)
+            end_time = format_time((index + 1) * 5)  # 임의의 종료 시간 (5초 간격)
+            text = transcript
 
             # 자막 번호, 시간 범위, 텍스트 형식으로 SRT 파일 작성
-            start_time_str = format_time(start_time)
-            end_time_str = format_time(end_time)
-
             f.write(f"{index}\n")
-            f.write(f"{start_time_str} --> {end_time_str}\n")
+            f.write(f"{start_time} --> {end_time}\n")
             f.write(f"{text}\n\n")
             index += 1
 
@@ -168,32 +160,34 @@ def convert_to_seconds(time_str):
     time_obj = datetime.strptime(time_str, "%H:%M:%S,%f")
     return time_obj.second + time_obj.minute * 60 + time_obj.hour * 3600 + time_obj.microsecond / 1e6
 
-def extract_dialogues_for_highlights(srt_path, highlights):
+def extract_dialogues_for_highlights(audio_path, highlights, bucket_name):
     """
     하이라이트 구간 동안 나오는 대사만 추출합니다.
 
-    :param srt_path: SRT 파일 경로
+    :param audio_path: 오디오 파일 경로
     :param highlights: 하이라이트 구간 리스트 (시작 시간, 종료 시간)
+    :param bucket_name: Google Cloud Storage 버킷 이름
     :return: 하이라이트 구간 동안의 대사 리스트
     """
-    subs = pysrt.open(srt_path)
+    transcripts = transcribe_audio(audio_path, bucket_name)  # 전체 대사 받아오기
     highlight_dialogues = []
 
     for start, end in highlights:
-        adjusted_start = max(0, start - 20)
-        adjusted_end = max(0, end + 10)
-        start_time = (datetime.min + timedelta(seconds=adjusted_start)).time()
-        end_time = (datetime.min + timedelta(seconds=adjusted_end)).time()
+        adjusted_start = max(0, start - 5)  # 하이라이트 시작점을 조금 앞당김
+        adjusted_end = min(len(transcripts) * 5, end + 5)  # 끝점을 조금 늘림
+
         dialogues = []
+        for i, transcript in enumerate(transcripts):
+            transcript_start_time = i * 5
+            transcript_end_time = (i + 1) * 5
 
-        for sub in subs:
-            if sub.start.to_time() >= start_time and sub.end.to_time() <= end_time:
-                dialogues.append(sub.text)
+            if (adjusted_start <= transcript_start_time <= adjusted_end) or \
+               (adjusted_start <= transcript_end_time <= adjusted_end):
+                dialogues.append(transcript)
 
-        highlight_dialogues.append(dialogues)
+        highlight_dialogues.append(dialogues)  # 개별 하이라이트 구간에 대한 대사 추가
 
     return highlight_dialogues
-
 
 
 # OpenAI 클라이언트 생성 (환경 변수에서 API 키 가져오기)
@@ -223,6 +217,12 @@ def generate_highlight_title(dialogues: List[str]) -> str:
     # 생성된 제목 반환
     return response.choices[0].message.content.strip()
 
+def detect_encoding(file_path):
+    with open(file_path, "rb") as f:
+        raw_data = f.read(50000)  # 파일의 앞부분 50000바이트를 검사
+    result = chardet.detect(raw_data)
+    return result["encoding"]
+
 def find_end_time_after(audio_txt_path, start_time_sec, flag):
     """
     주어진 초 이후에 등장인물이 대사를 마친 시점을 찾는 함수.
@@ -231,31 +231,36 @@ def find_end_time_after(audio_txt_path, start_time_sec, flag):
     :param start_time_sec: 대사를 시작할 초 (seconds)
     :return: 해당 시점 이후 대사가 끝난 시점 초
     """
+    encoding = detect_encoding(audio_txt_path)  # 파일 인코딩 감지
+    print(f"Detected encoding: {encoding}")  # 감지된 인코딩 출력
+
+    try:
+        with open(audio_txt_path, 'r', encoding=encoding, errors="replace") as file:  
+            lines = file.readlines()
+    except UnicodeDecodeError:
+        print("❌ UTF-8로 읽기 실패. ISO-8859-1로 재시도...")
+        with open(audio_txt_path, 'r', encoding="ISO-8859-1", errors="replace") as file:
+            lines = file.readlines()
+
     end_time = None  # 대사 끝나는 시간 (초 단위)
 
-    with open(audio_txt_path, 'r', encoding='utf-8') as file:
-        lines = file.readlines()
-
-    # .srt 파일 파싱: 짝수 번째 줄은 시간 정보, 홀수 번째 줄은 대사 내용
     for i in range(len(lines)):
-        time_range = lines[i].strip()  # '00:00:01,000 --> 00:00:05,000'
+        time_range = lines[i].strip()
         if '-->' in time_range:
             start_time_str, end_time_str = time_range.split('-->')
             print(f"-- end_time_str : {end_time_str} --")
         else:
             continue
-        end_time_str = end_time_str.strip()
 
-        # 시작과 끝 시간 변환
+        end_time_str = end_time_str.strip()
         end_time_sec = convert_to_seconds(end_time_str)
 
         if flag == "s":
-            if start_time_sec < end_time_sec and end_time_sec <= start_time_sec+20:
+            if start_time_sec < end_time_sec and end_time_sec <= start_time_sec + 20:
                 if end_time is None or end_time_sec < end_time:
                     end_time = end_time_sec
                     break
         elif flag == "e":
-            # 주어진 start_time_sec 이후에 끝나는 첫 번째 대사 종료 시간 찾기
             if start_time_sec < end_time_sec:
                 if end_time is None or end_time_sec < end_time:
                     print(f"===== end_time_sec: {end_time_sec} =====")
@@ -266,6 +271,7 @@ def find_end_time_after(audio_txt_path, start_time_sec, flag):
         return start_time_sec
 
     return end_time
+
 
 def get_video_duration(video_path):
     """
@@ -278,7 +284,7 @@ def get_video_duration(video_path):
     video.close()
     return duration
 
-def scene_detection(local_path, highlights):
+def scene_detection(local_path, highlights, bucket_name):
     cap = cv2.VideoCapture(local_path)
 
     if not cap.isOpened():
@@ -296,45 +302,35 @@ def scene_detection(local_path, highlights):
         print("Error reading the first frame from the video.")
         exit(1)
 
-    previous_histogram = cv2.calcHist([frame], [0, 1, 2], None, [
-                                      8, 8, 8], [0, 256, 0, 256, 0, 256])
-    previous_histogram = cv2.normalize(
-        previous_histogram, previous_histogram).flatten()
-
     audio_path = f"audio.wav"
-    extract_audio(local_path, audio_path)
-    dialoges_srt_path = "drama_dialogues.srt"
-    generate_srt_from_audio(audio_path, dialoges_srt_path)
-    dialoges_final_path = "merged.srt"
-    merge_srt_lines(dialoges_srt_path, dialoges_final_path, min_gap=1.0)
+    extract_audio(local_path, audio_path)  # 비디오에서 오디오 추출
+
+    # 하이라이트 구간별로 오디오를 잘라서 저장
+    highlight_audio_paths = split_audio_by_highlights(audio_path, highlights)
+
+    # 하이라이트 구간별로 오디오 파일을 텍스트로 변환
+    highlight_dialogues = transcribe_audio_by_highlights(highlight_audio_paths, bucket_name)
 
     video_duration = get_video_duration(local_path)
 
     adjusted_highlights = []
     for start, end in highlights:
-        adjusted_start = find_end_time_after(
-            dialoges_final_path, start - 15, flag="s")
-        adjusted_end = find_end_time_after(dialoges_final_path, end, flag="e")
+        adjusted_start = find_end_time_after(audio_path, start - 15, flag="s")
+        adjusted_end = find_end_time_after(audio_path, end, flag="e")
 
-        # 하이라이트 구간의 끝 시간이 비디오 길이를 초과하지 않도록 조정
         if adjusted_end > video_duration:
             adjusted_end = video_duration
 
         adjusted_highlights.append([adjusted_start, adjusted_end])
 
     print("Adjusted highlights:", adjusted_highlights)
-
-    # 하이라이트 구간 동안의 대사 추출
-    highlight_dialogues = extract_dialogues_for_highlights(dialoges_final_path, adjusted_highlights)
     print("Highlight dialogues:", highlight_dialogues)
 
-    # Cleanup
-    if cap:
-        cap.release()
+    cap.release()
     cv2.destroyAllWindows()
     os.remove(audio_path)
-    os.remove(dialoges_srt_path)
-    os.remove(dialoges_final_path)
+    for path in highlight_audio_paths:
+        os.remove(path)
 
     return adjusted_highlights, highlight_dialogues
 
@@ -387,10 +383,78 @@ def save_highlights_with_moviepy(local_path, adjusted_highlights, highlight_dial
     
     return local_path_list
 
+def upload_to_gcs(bucket_name, source_file_name, destination_blob_name):
+    """Uploads a file to the bucket."""
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(destination_blob_name)
+
+    blob.upload_from_filename(source_file_name)
+
+    print(f"File {source_file_name} uploaded to {destination_blob_name}.")
+
+    return f"gs://{bucket_name}/{destination_blob_name}"
+
+
+def split_audio_by_highlights(audio_path, highlights):
+    """
+    하이라이트 구간별로 오디오 파일을 잘라서 저장합니다.
+
+    :param audio_path: 오디오 파일 경로
+    :param highlights: 하이라이트 구간 리스트 (시작 시간, 종료 시간)
+    :return: 하이라이트 구간별 오디오 파일 경로 리스트
+    """
+    audio = AudioSegment.from_wav(audio_path)
+    highlight_audio_paths = []
+
+    for idx, (start, end) in enumerate(highlights):
+        start_ms = start * 1000  # 시작 시간 (밀리초)
+        end_ms = end * 1000  # 종료 시간 (밀리초)
+        highlight_audio = audio[start_ms:end_ms]
+
+        highlight_audio_path = f"highlight_{idx + 1}.wav"
+        highlight_audio.export(highlight_audio_path, format="wav")
+        highlight_audio_paths.append(highlight_audio_path)
+
+    return highlight_audio_paths
+
+def transcribe_audio_by_highlights(audio_paths, bucket_name):
+    """
+    하이라이트 구간별로 오디오 파일을 Google STT API를 사용하여 텍스트로 변환합니다.
+
+    :param audio_paths: 하이라이트 구간별 오디오 파일 경로 리스트
+    :param bucket_name: Google Cloud Storage 버킷 이름
+    :return: 하이라이트 구간별 대사 리스트
+    """
+    highlight_dialogues = []  # 하이라이트 구간별 대사를 저장할 리스트
+
+    for audio_path in audio_paths:
+        gcs_uri = upload_to_gcs(bucket_name, audio_path, os.path.basename(audio_path))
+
+        client = speech.SpeechClient()
+
+        audio = speech.RecognitionAudio(uri=gcs_uri)
+        config = speech.RecognitionConfig(
+            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+            sample_rate_hertz=16000,
+            language_code="ko-KR",
+        )
+
+        operation = client.long_running_recognize(config=config, audio=audio)
+        response = operation.result(timeout=90)
+
+        dialogues = [result.alternatives[0].transcript for result in response.results]
+
+        # 개별 하이라이트 구간별 대사 저장
+        highlight_dialogues.append(dialogues)
+
+    return highlight_dialogues
+
 
 # highlights = [[101.3, 141.63], [196.7, 256.7], [321.61, 381.61], [469.14, 529.14], [547.82, 580.28]]
 # local_path = "./눈물의여왕.mov"
 highlights = [[16.00, 60.00], [125.00, 183.00]]
 local_path = "./테스트_비디오.mov"
-adjusted_highlights, highlight_dialogues = scene_detection(local_path, highlights)
-save_highlights_with_moviepy(local_path, adjusted_highlights, highlight_dialogues,123)
+bucket_name = "dramapicksttbucket"
+adjusted_highlights, highlight_dialogues = scene_detection(local_path, highlights, bucket_name)
+save_highlights_with_moviepy(local_path, adjusted_highlights, highlight_dialogues, 123)
