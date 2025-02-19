@@ -1,4 +1,4 @@
-from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip
+from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, ImageClip
 import os
 from s3_client import s3_client
 from botocore.exceptions import NoCredentialsError
@@ -10,7 +10,6 @@ AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
 AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "test-fastapi-bucket")
 S3_REGION_NAME = os.getenv("S3_REGION_NAME", "ap-northeast-2")
-
 
 def search_drama_api(drama_title: str):
     result = search_drama(drama_title)
@@ -64,7 +63,6 @@ def crop_and_pad_to_1080x1920(clip):
     
     return clip
 
-
 def clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highlights):
     TEMP_DIR = 'tmp'
     if not os.path.exists(TEMP_DIR):
@@ -74,6 +72,20 @@ def clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highligh
 
     try:
         video = VideoFileClip(local_path)
+        
+        drama_info = get_drama_api(drama_title)
+        if not drama_info:
+            drama_info = search_drama_api(drama_title)
+            if not drama_info:
+                raise ValueError("❌ 드라마 정보를 찾을 수 없습니다.")
+
+        text1 = drama_title.encode('utf-8')
+        txt_clip1 = TextClip(text1, fontsize=55, color='white', font=font_path)
+        txt_clip1.save_frame("tmp/img_clip1.png", t=0)
+
+        text2 = f"{drama_info['broadcaster']} - {drama_info['air_date']}"
+        txt_clip2 = TextClip(text2, fontsize=30, color='white', font=font_path)
+        txt_clip2.save_frame("tmp/img_clip2.png", t=0)
 
         url_list = []
         for idx, (start, end) in enumerate(adjusted_highlights):
@@ -81,25 +93,15 @@ def clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highligh
 
             highlight_clip = crop_and_pad_to_1080x1920(highlight_clip)
 
-            drama_info = get_drama_api(drama_title)
-            if not drama_info:
-                drama_info = search_drama_api(drama_title)
-                if not drama_info:
-                    raise ValueError("❌ 드라마 정보를 찾을 수 없습니다.")
-
-            text1 = drama_title.encode('utf-8')
-            txt_clip1 = TextClip(text1, fontsize=55, color='white', font=font_path)
-            txt_clip1 = txt_clip1.set_position(('center', highlight_clip.h - 450)).set_duration(video.duration)
-
-            text2 = f"{drama_info['broadcaster']} - {drama_info['air_date']}"
-            txt_clip2 = TextClip(text2, fontsize=30, color='white', font=font_path)
-            txt_clip2 = txt_clip2.set_position(('center', highlight_clip.h - 350)).set_duration(video.duration)
-
             filename = f"{task_id}_highlight_with_info_{idx+1}.mp4"
             output_path = os.path.join(TEMP_DIR, filename)  # 임시 파일 경로 설정
             
-            result = CompositeVideoClip([highlight_clip, txt_clip1, txt_clip2])
-            result.write_videofile(output_path)
+            text_img1 = ImageClip("img_clip1.png").set_duration(highlight_clip.duration).set_position(('center', highlight_clip.h - 450))
+            text_img2 = ImageClip("img_clip2.png").set_duration(highlight_clip.duration).set_position(('center', highlight_clip.h - 350))
+        
+            result = CompositeVideoClip([highlight_clip, text_img1, text_img2])
+            # result.write_videofile(output_path, codec="libx264", audio_codec="aac", preset="ultrafast")
+            result.write_videofile(output_path, codec="libx264", audio_codec="aac", threads=8, fps=24)
 
             s3_url_ = upload_to_s3(output_path, filename)
             url_list.append(s3_url_)
@@ -109,9 +111,15 @@ def clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highligh
             os.remove(local_path)
             os.remove(output_path)
 
+        os.remove("tmp/img_clip1.png")
+        os.remove("tmp/img_clip2.png")
+
         return url_list
     
     except ValueError as e:
         return f"🚨 오류: {e}"
     except Exception as e:
         return f"🚨 예기치 않은 오류 발생: {e}"
+
+if __name__ == "__main__":
+    clip_and_save_highlights("시연용비디오.mov", 1111, "눈물의 여왕", [[10.0, 50.0]])
