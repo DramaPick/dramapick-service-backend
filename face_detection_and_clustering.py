@@ -189,7 +189,7 @@ def face_detection_and_clustering(s3_url, task_id):
     fps = cap.get(cv2.CAP_PROP_FPS)
 
     # delete_file(local_path)
-    frame_interval = (int(fps) - 1) * 2
+    frame_interval = (int(fps) - 1) * 5
     frame_number = 0
 
     while cap.isOpened():

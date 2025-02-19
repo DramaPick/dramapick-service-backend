@@ -212,7 +212,7 @@ def process_video(s3_url: str, task_id: str):
         print(f"Processing video for task {task_id}...")
         # 감정 분석 수행
         result = emotion_detection(s3_url, task_id, emotion_threshold=10)
-        intervals, count = result
+        # intervals, count = result
 
         # 감정 분석 결과 저장
         add_or_update_task(task_id, "감정 분석 완료", {
@@ -281,6 +281,7 @@ async def upload_video(
     # S3에 파일 업로드
     filename = f"{task_id}_{file.filename}"
     s3_url = upload_to_s3(file.file, filename, file.content_type)
+    print(f"성공적으로 업로드 완료 : {s3_url}")
 
     # 다운로드 to tmp 폴더(한 번에 비디오 처리 위함)
     get_video_from_s3(s3_url)
