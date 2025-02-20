@@ -24,7 +24,8 @@ import re
 from adjust_highlights import scene_detection
 from drama_crawling import search_drama, get_drama
 from lxml import html
-from clip_video_info import clip_and_save_highlights
+from clip_video_info import clip_and_save_highlights, insert_title_into_video
+from title_generation import generate_highlight_title
 
 TEMP_DIR = 'tmp'
 
@@ -173,8 +174,7 @@ def upload_to_s3(file, filename, content_type):
 
             # 각 파트를 비동기적으로 업로드
             for part_number in range(1, num_parts + 1):
-                futures.append(executor.submit(upload_part, file,
-                               filename, upload_id, part_number, part_size))
+                futures.append(executor.submit(upload_part, file, filename, upload_id, part_number, part_size))
 
             # 모든 파트가 완료될 때까지 기다리고 결과 처리
             for future in as_completed(futures):
@@ -343,7 +343,9 @@ async def select_actors(video_id: str, request: Request):
     # person_score 높은 순서 -> 낮은 순서로 정렬된 (내림차순) 하이라이트 리스트 가지고 오기
     print(f"--------------- task status : {task} ---------------")
     # print(f"--------------- task['highlights'], task['highlight_count'] : {task['highlights'], task['highlight_count']} ---------------")
-    if (len(task['highlights']) == 1):
+    if (len(task['highlights']) == 0):
+        return {"message": "추출된 하이라이트가 없습니다. 더 긴 영상의 비디오를 업로드해주세요.", "video_id": video_id, "data": users, "status": "no_highlight", "sorted_highlights": sorted_highlights}
+    elif (len(task['highlights']) == 1):
         sorted_highlights = task['highlights']
     else:
         sorted_highlights = person_score(s3_url, task["highlights"], selected_actors)
@@ -404,3 +406,31 @@ async def save_highlight_with_info(request: SaveClipRequest):
 
     print(f"------------------쇼츠 저장 완료 -> {s3_url_list}------------------")
     return JSONResponse(content={"message": "쇼츠 저장 완료", "s3_url_list": s3_url_list})
+
+@app.post("/highlight/title")
+def generate_short_title(org_title: str, file_name: str):
+    titles = generate_highlight_title(org_title)
+    print(f"titles: {titles}, file_name: {file_name}")
+    return JSONResponse(content={"message": "title 추출 완료", "titles": titles, "file_name": file_name})
+
+
+def extract_task_id_and_number(file_name):
+    match = re.match(r"^(\d+)_highlight_with_info_(\d+)\.mp4$", file_name)
+    if match:
+        task_id = match.group(1)  # 처음의 숫자 (task_id)
+        number = match.group(2)    # .mp4 앞의 숫자
+        return task_id, number
+    return None, None  # 형식이 맞지 않으면 None 반환
+
+@app.post("/submit/title")
+def insert_title_into_short(selected_title: str, file_name: str):
+    task_id, idx = extract_task_id_and_number(file_name)
+    print(f"\ntask_id: {task_id}, idx: {idx}\n")
+    TEMP_DIR = "tmp"
+    selected_title = selected_title.replace('"', "")
+    selected_title = selected_title.replace('-', "").strip()
+    local_path = os.path.join(TEMP_DIR, file_name)  # 임시 파일 경로 설정
+    print(f"local_path in insert_title_into_short : {local_path}")
+    s3_url_with_title = insert_title_into_video(local_path, task_id, selected_title, idx)
+    print(f"selected_title: {selected_title}, file_name: {file_name}")
+    return JSONResponse(content={"message": "title 삽입 완료", "selected_title": selected_title, "s3_url_with_title": s3_url_with_title})
