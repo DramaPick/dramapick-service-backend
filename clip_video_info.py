@@ -63,6 +63,39 @@ def crop_and_pad_to_1080x1920(clip):
     
     return clip
 
+def insert_title_into_video(local_path, task_id, title, idx):
+    TEMP_DIR = 'tmp'
+    if not os.path.exists(TEMP_DIR):
+        os.makedirs(TEMP_DIR)
+
+    font_path = "/System/Library/Fonts/AppleSDGothicNeo.ttc"
+
+    try:
+        video = VideoFileClip(local_path)
+
+        text = title.encode('utf-8')
+        txt_clip = TextClip(text, fontsize=60, color='white', font=font_path)
+        txt_clip.save_frame("img_clip_title.png", t=0)
+
+        text_img = ImageClip("img_clip_title.png").set_duration(video.duration).set_position(('center', 300))
+
+        filename = f"{str(task_id)}_highlight_with_ai_title_{str(idx)}.mp4"
+        output_path = os.path.join(TEMP_DIR, filename)
+
+        result = CompositeVideoClip([video, text_img])
+        result.write_videofile(output_path, codec="libx264", audio_codec="aac", threads=8, fps=24)
+        
+        s3_url_ = upload_to_s3(output_path, filename)
+
+        os.remove("img_clip_title.png")
+
+        return s3_url_
+    
+    except ValueError as e:
+        return f"🚨 오류: {e}"
+    except Exception as e:
+        return f"🚨 예기치 않은 오류 발생: {e}"
+
 def clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highlights):
     TEMP_DIR = 'tmp'
     if not os.path.exists(TEMP_DIR):
@@ -81,13 +114,13 @@ def clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highligh
 
         text1 = drama_title.encode('utf-8')
         txt_clip1 = TextClip(text1, fontsize=55, color='white', font=font_path)
-        txt_clip1.save_frame("tmp/img_clip1.png", t=0)
+        txt_clip1.save_frame("img_clip1.png", t=0)
 
         text2 = f"{drama_info['broadcaster']} - {drama_info['air_date']}"
         txt_clip2 = TextClip(text2, fontsize=30, color='white', font=font_path)
-        txt_clip2.save_frame("tmp/img_clip2.png", t=0)
+        txt_clip2.save_frame("img_clip2.png", t=0)
 
-        url_list = []
+        url_list, output_path_list = [], []
         for idx, (start, end) in enumerate(adjusted_highlights):
             highlight_clip = video.subclip(start, end)
 
@@ -103,16 +136,17 @@ def clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highligh
             # result.write_videofile(output_path, codec="libx264", audio_codec="aac", preset="ultrafast")
             result.write_videofile(output_path, codec="libx264", audio_codec="aac", threads=8, fps=24)
 
+            output_path_list.append(output_path)
+
             s3_url_ = upload_to_s3(output_path, filename)
             url_list.append(s3_url_)
 
             print(f"Successfully saved highlight {idx + 1} in S3 BUCKET!!")
 
             os.remove(local_path)
-            os.remove(output_path)
 
-        os.remove("tmp/img_clip1.png")
-        os.remove("tmp/img_clip2.png")
+        os.remove("img_clip1.png")
+        os.remove("img_clip2.png")
 
         return url_list
     
