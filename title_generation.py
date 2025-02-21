@@ -51,4 +51,7 @@ def generate_highlight_title(input_title: str) -> List[str]:
 
     # 생성된 제목 리스트 반환
     titles = [choice.message.content.strip() for choice in response.choices]
+    for i in range(len(titles)):
+        title_ = f'\n{input_title}'
+        titles[i] += title_
     return titles
