@@ -17,8 +17,11 @@ load_dotenv()
 
 TEMP_DIR = 'tmp'
 
-if not os.path.exists(TEMP_DIR):
-    os.makedirs(TEMP_DIR)
+# S3 설정
+AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
+AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "test-fastapi-bucket")
+S3_REGION_NAME = os.getenv("S3_REGION_NAME", "ap-northeast-2")
 
 # dlib의 얼굴 감지기 및 랜드마크 예측기 로드
 detector = dlib.get_frontal_face_detector()
@@ -186,6 +189,7 @@ def face_detection_and_clustering(s3_url, task_id):
     base_name = filename.split('.')[0]  # 확장자 제외한 파일명
     local_path = os.path.join("tmp", f"{base_name}.mov")  # 명시적으로 .mov 확장자 지정
     print(f"------------ FACE DETECTION AND CLUSTERING -> local_path : {local_path} ------------")
+
 
     cap = cv2.VideoCapture(local_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
