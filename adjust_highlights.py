@@ -9,11 +9,41 @@ import warnings
 from datetime import datetime
 from google.cloud import speech
 import io
+import re
+from s3_client import s3_client
+from botocore.exceptions import NoCredentialsError
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "dramapickstt-4efdec08fb9c.json"
 warnings.filterwarnings('ignore')
 
 
+# S3 설정
+AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
+AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "test-fastapi-bucket")
+S3_REGION_NAME = os.getenv("S3_REGION_NAME", "ap-northeast-2")
+
+def parse_s3_url(s3_url: str):
+    regex = r"https://([^/]+)\.s3\.[^/]+\.amazonaws\.com/(.+)"
+    match = re.match(regex, s3_url)
+    if not match:
+        raise ValueError(f"Invalid S3 URL: {s3_url}")
+    return match.group(1), match.group(2)
+
+def get_video_from_s3(s3_url):
+    TEMP_DIR = "tmp"
+    bucket_name, object_key = parse_s3_url(s3_url)
+    local_path = os.path.join(TEMP_DIR, object_key.split('/')[-1])  # 임시 파일 경로 설정
+    print(f"Downloading video from S3 to {local_path}")
+
+    try:
+        s3_client.download_file(bucket_name, object_key, local_path)
+        print(f"Downloaded {local_path}")
+    except NoCredentialsError:
+        raise Exception("AWS credentials not available.")
+    except Exception as e:
+        raise Exception(f"Error downloading from S3: {e}")
+    
 def parse_time(srt_time_str):
     """SRT 시간 문자열을 timedelta로 변환"""
     return datetime.strptime(srt_time_str, "%H:%M:%S,%f")
@@ -207,7 +237,18 @@ def merge_srt_lines(input_srt_path, output_srt_path, min_gap=1.0):
 
     print("---------- Merged ----------")
 
-def scene_detection(local_path, highlights):
+
+def scene_detection(local_path, highlights, s3_url):
+    TEMP_DIR = 'tmp'
+    if not os.path.exists(TEMP_DIR):
+        os.makedirs(TEMP_DIR)
+
+    if os.path.exists(local_path):
+        print(f"Using local video file: {local_path}")
+    else:
+        print(f"Local file not found, downloading from S3: {s3_url}")
+        get_video_from_s3(s3_url)  # S3에서 다운로드
+
     cap = cv2.VideoCapture(local_path)
 
     if not cap.isOpened():
@@ -230,11 +271,11 @@ def scene_detection(local_path, highlights):
     previous_histogram = cv2.normalize(
         previous_histogram, previous_histogram).flatten()
 
-    audio_path = f"audio.wav"
+    audio_path = os.path.join(TEMP_DIR, "audio.wav")
     extract_audio(local_path, audio_path)
-    dialoges_srt_path = "drama_dialogues.srt"
+    dialoges_srt_path = os.path.join(TEMP_DIR, "drama_dialogues.srt")
     generate_srt_from_audio(audio_path, dialoges_srt_path)
-    dialoges_final_path = "merged.srt"
+    dialoges_final_path = os.path.join(TEMP_DIR, "merged.srt")
     merge_srt_lines(dialoges_srt_path, dialoges_final_path, min_gap=1.0)
 
     adjusted_highlights = []
