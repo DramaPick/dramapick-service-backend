@@ -14,16 +14,11 @@ from emotion_detection import emotion_detection
 import mimetypes
 from s3_client import s3_client
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import redis
-import requests
 import asyncio
-from bs4 import BeautifulSoup
-import json
 from person_score import person_score
 import re
 from adjust_highlights import scene_detection
 from drama_crawling import search_drama, get_drama
-from lxml import html
 from clip_video_info import clip_and_save_highlights, insert_title_into_video
 from title_generation import generate_highlight_title
 
@@ -57,7 +52,6 @@ async def search_drama_api(drama_title: str):
 
 @app.get("/get_drama")
 async def get_drama_api(drama_title: str):
-    # Redis에서 데이터 조회
     result = get_drama(drama_title)
     if result:
         return result
@@ -301,10 +295,8 @@ def detect_and_cluster(s3_url: str, task_id: str):
     # 인물 감지 및 클러스터링
     print(f"------------------{task_id} 작업------------------")
     print("------------------인물 감지 및 클러스터링 시작: {s3_url}------------------")
-    representative_images = face_detection_and_clustering(
-        s3_url, task_id)  # Face Detection and Clustering
-    image_urls = [upload_to_s3(open(image_path, 'rb'), os.path.basename(image_path), mimetypes.guess_type(
-        image_path)[0] or 'application/octet-stream') for image_path in representative_images]
+    representative_images = face_detection_and_clustering(s3_url, task_id)  # Face Detection and Clustering
+    image_urls = [upload_to_s3(open(image_path, 'rb'), os.path.basename(image_path), mimetypes.guess_type(image_path)[0] or 'application/octet-stream') for image_path in representative_images]
     delete_specified_files(task_id, TEMP_DIR)
     print(
         f"------------------인물 감지 및 클러스터링 완료 -> {image_urls}------------------")
@@ -372,7 +364,7 @@ async def detect_scenes(request: HighlightRequest):
     base_name = filename.split('.')[0]
     local_path = os.path.join(TEMP_DIR, f"{base_name}.mov")  # .mov 확장자 사용
 
-    adjusted_highlights = scene_detection(local_path, highlights)  # scene_detection 함수 실행
+    adjusted_highlights = scene_detection(local_path, highlights, s3_url)  # scene_detection 함수 실행
 
     add_or_update_task(task_id, "하이라이트 조정 완료", {
         "adjusted_highlights": adjusted_highlights
@@ -402,7 +394,7 @@ async def save_highlight_with_info(request: SaveClipRequest):
     base_name = filename.split('.')[0]
     local_path = os.path.join(TEMP_DIR, f"{base_name}.mov")
 
-    s3_url_list = clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highlights)
+    s3_url_list = clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highlights, s3_url)
 
     print(f"------------------쇼츠 저장 완료 -> {s3_url_list}------------------")
     return JSONResponse(content={"message": "쇼츠 저장 완료", "s3_url_list": s3_url_list})
@@ -425,12 +417,13 @@ def extract_task_id_and_number(file_name):
 @app.post("/submit/title")
 def insert_title_into_short(selected_title: str, file_name: str):
     task_id, idx = extract_task_id_and_number(file_name)
-    print(f"\ntask_id: {task_id}, idx: {idx}\n")
+
     TEMP_DIR = "tmp"
     selected_title = selected_title.replace('"', "")
     selected_title = selected_title.replace('-', "").strip()
-    local_path = os.path.join(TEMP_DIR, file_name)  # 임시 파일 경로 설정
-    print(f"local_path in insert_title_into_short : {local_path}")
-    s3_url_with_title = insert_title_into_video(local_path, task_id, selected_title, idx)
-    print(f"selected_title: {selected_title}, file_name: {file_name}")
+
+    local_path = os.path.join(TEMP_DIR, file_name)
+    s3_url = f"https://{S3_BUCKET_NAME}.s3.{S3_REGION_NAME}.amazonaws.com/{file_name}"
+    s3_url_with_title = insert_title_into_video(local_path, task_id, selected_title, idx, s3_url)
+
     return JSONResponse(content={"message": "title 삽입 완료", "selected_title": selected_title, "s3_url_with_title": s3_url_with_title})
