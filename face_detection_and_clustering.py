@@ -184,10 +184,13 @@ def calculate_face_angle_parallel(image_paths):
 
 
 def face_detection_and_clustering(s3_url, task_id):
-    bucket_name, object_key = parse_s3_url(s3_url)
+    _, object_key = parse_s3_url(s3_url)
     filename = object_key.split('/')[-1]
     base_name = filename.split('.')[0]  # 확장자 제외한 파일명
-    local_path = os.path.join("tmp", f"{base_name}.mov")  # 명시적으로 .mov 확장자 지정
+    if "mov" in s3_url:
+        local_path = os.path.join("tmp", f"{base_name}.mov")  # 명시적으로 .mov 확장자 지정
+    elif "mp4" in s3_url:
+        local_path = os.path.join("tmp", f"{base_name}.mp4")  # 명시적으로 .mp4 확장자 지정 
     print(f"------------ FACE DETECTION AND CLUSTERING -> local_path : {local_path} ------------")
 
 
@@ -195,7 +198,7 @@ def face_detection_and_clustering(s3_url, task_id):
     fps = cap.get(cv2.CAP_PROP_FPS)
 
     # delete_file(local_path)
-    frame_interval = (int(fps) - 1) * 5
+    frame_interval = (int(fps) - 1) * 1
     frame_number = 0
 
     while cap.isOpened():
@@ -225,7 +228,7 @@ def face_detection_and_clustering(s3_url, task_id):
 
     if len(features) == 0:
         print("얼굴 인식된 이미지가 없습니다. 클러스터링을 수행할 수 없습니다.")
-        exit()
+        return None
 
     # 코사인 유사도를 계산하여 군집화
     clustering = AgglomerativeClustering(distance_threshold=0.05, n_clusters=None, metric='cosine', linkage='average')

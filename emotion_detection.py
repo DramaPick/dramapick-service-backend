@@ -4,10 +4,8 @@ import os
 import re
 from deepface import DeepFace
 from multiprocessing import Pool, cpu_count
-from botocore.exceptions import NoCredentialsError
-from s3_client import s3_client
-from imutils import resize
 from dotenv import load_dotenv
+import mediapipe as mp
 
 load_dotenv()
 
@@ -17,11 +15,14 @@ if not os.path.exists(TEMP_DIR):
     os.makedirs(TEMP_DIR)
 
 # --- S3에서 비디오 다운로드 및 감정 분석 ---
-def emotion_detection(s3_url, task_id, emotion_threshold=10):
+def emotion_detection(s3_url, task_id, emotion_threshold=0.5):
     bucket_name, object_key = parse_s3_url(s3_url)
     filename = object_key.split('/')[-1]
     base_name = filename.split('.')[0]  # 확장자 제외한 파일명
-    local_path = os.path.join("tmp", f"{base_name}.mov")  # 명시적으로 .mov 확장자 지정
+    if "mov" in s3_url:
+        local_path = os.path.join("tmp", f"{base_name}.mov")  # 명시적으로 .mov 확장자 지정
+    elif "mp4" in s3_url:
+        local_path = os.path.join("tmp", f"{base_name}.mp4")  # 명시적으로 .mp4 확장자 지정
     print(f"------------ EMOTION DETECTION local_path : {local_path} ------------")
 
     highlights = extract_emotion_highlights(local_path, emotion_threshold)
@@ -36,13 +37,12 @@ def emotion_detection(s3_url, task_id, emotion_threshold=10):
     merged_intervals = merge_emotional_intervals(highlights)
     return [merged_intervals, len(merged_intervals)]
 
-
 # --- 비디오에서 감정 분석 하이라이트 추출 ---
-def extract_emotion_highlights(video_path, emotion_threshold=10):
+def extract_emotion_highlights(video_path, emotion_threshold=0.5):
     cap = cv2.VideoCapture(video_path)
     frame_idx = 0
     fps = cap.get(cv2.CAP_PROP_FPS) or 60  # 기본 60 FPS
-    sampling_rate = (fps // 1) * 2
+    sampling_rate = (fps // 1)
     frames_to_process = []
 
     while cap.isOpened():

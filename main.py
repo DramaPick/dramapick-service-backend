@@ -296,7 +296,7 @@ def detect_and_cluster(s3_url: str, task_id: str):
     print(f"------------------{task_id} 작업------------------")
     print("------------------인물 감지 및 클러스터링 시작: {s3_url}------------------")
     representative_images = face_detection_and_clustering(s3_url, task_id)  # Face Detection and Clustering
-    if len(representative_images) == 0:
+    if representative_images is None:
         return JSONResponse(content={"message": "클러스터링된 인물이 존재하지 않습니다."})
     image_urls = [upload_to_s3(open(image_path, 'rb'), os.path.basename(image_path), mimetypes.guess_type(image_path)[0] or 'application/octet-stream') for image_path in representative_images]
     delete_specified_files(task_id, TEMP_DIR)
@@ -338,7 +338,7 @@ async def select_actors(video_id: str, request: Request):
     print(f"--------------- task status : {task} ---------------")
     # print(f"--------------- task['highlights'], task['highlight_count'] : {task['highlights'], task['highlight_count']} ---------------")
     if (len(task['highlights']) == 0):
-        return {"message": "추출된 하이라이트가 없습니다. 더 긴 영상의 비디오를 업로드해주세요.", "video_id": video_id, "data": users, "status": "no_highlight", "sorted_highlights": sorted_highlights}
+        return {"message": "추출된 하이라이트가 없습니다. 더 긴 영상의 비디오를 업로드해주세요.", "video_id": video_id, "data": users, "status": "no_highlight"}
     elif (len(task['highlights']) == 1):
         sorted_highlights = task['highlights']
     else:
