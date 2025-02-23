@@ -91,7 +91,7 @@ def insert_title_into_video(local_path, task_id, title, idx, s3_url):
     if not os.path.exists(TEMP_DIR):
         os.makedirs(TEMP_DIR)
 
-    font_path = "/System/Library/Fonts/AppleSDGothicNeo.ttc"
+    font_path = os.path.join(os.path.dirname(__file__), 'assets', 'fonts', 'MaruBuri-Bold.ttf')
 
     try:
         if os.path.exists(local_path):
@@ -131,7 +131,8 @@ def clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highligh
     if not os.path.exists(TEMP_DIR):
         os.makedirs(TEMP_DIR)
 
-    font_path = "/System/Library/Fonts/AppleSDGothicNeo.ttc"
+    font_path = os.path.join(os.path.dirname(__file__), 'assets', 'fonts', 'MaruBuri-Regular.ttf')
+
 
     try:
         if os.path.exists(local_path):
