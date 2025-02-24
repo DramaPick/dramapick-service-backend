@@ -30,7 +30,7 @@ jobs:
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
-          cd /path/to/your/project
+          cd /home/ec2-user/app
           
           # 🔹 기존 컨테이너 중지 및 삭제
           docker-compose down
