@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the requirements file
-COPY requirements.txt /app/
+COPY ./requirements.txt /app/
 
 # Install Python dependencies
 RUN pip install --upgrade pip
