@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Debug: Check docker-compose.yml before SCP
+    - name: Debug -  Check docker-compose.yml before SCP
       run: |
         echo "=== Checking current directory ==="
         ls -l
