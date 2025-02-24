@@ -44,7 +44,7 @@ jobs:
         key: ${{ secrets.EC2_SSH_KEY }}
         source: "./Dockerfile"
         target: "/home/ec2-user/app/"
-
+    
     # 4️⃣ EC2에 SSH 접속 후 최신 Docker 이미지 배포
     - name: Deploy to EC2
       uses: appleboy/ssh-action@master
