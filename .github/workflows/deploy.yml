@@ -55,6 +55,15 @@ jobs:
         source: "./requirements.txt"
         target: "/home/ec2-user/app/"
     
+    - name: Test SSH Connection
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          echo "✅ SSH 연결 성공!"
+    
     # 4️⃣ EC2에 SSH 접속 후 최신 Docker 이미지 배포
     - name: Deploy to EC2
       uses: appleboy/ssh-action@master
