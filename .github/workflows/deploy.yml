@@ -17,7 +17,6 @@ jobs:
     # 2️⃣ Docker 이미지 빌드 및 Docker Hub에 푸시
     - name: Build and Push Docker Image
       run: |
-        cd /home/ec2-user/app
         docker build -t fastapi-app .
         echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
         docker tag fastapi-app ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
@@ -30,7 +29,7 @@ jobs:
         host: ${{ secrets.EC2_HOST }}
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
-        source: "./docker-compose.yml, ./Dockerfile"
+        source: "docker-compose.yml Dockerfile"
         target: "/home/ec2-user/app/"
 
     # 4️⃣ EC2에 SSH 접속 후 최신 Docker 이미지 배포
@@ -46,6 +45,13 @@ jobs:
           
           # 프로젝트 디렉토리로 이동
           cd /home/ec2-user/app
+
+          # 기존 컨테이너 중지
+          docker-compose down || true
+          
+          # 최신 Docker 이미지 가져오기
+          docker pull ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
+          
           
           # 필수 파일 존재 여부 확인
           if [ ! -f docker-compose.yml ]; then
@@ -67,9 +73,6 @@ jobs:
           echo "S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}" >> .env
           echo "S3_REGION_NAME=${{ secrets.S3_REGION_NAME }}" >> .env
           echo "GPT_API_KEY=${{ secrets.GPT_API_KEY }}" >> .env
-          
-          # 최신 Docker 이미지 가져오기
-          docker pull ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
           
           # Docker Compose 실행
           docker-compose up -d --build
