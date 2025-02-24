@@ -1,0 +1,17 @@
+fastapi
+pydantic
+python-dotenv
+boto3
+botocore
+opencv-python
+dlib
+numpy
+imutils
+scikit-learn
+face-recognition
+moviepy
+requests
+lxml
+redis
+deepface
+tensorflow==2.11.0  # Specify a compatible version of TensorFlow
