@@ -10,13 +10,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Debug -  Check docker-compose.yml before SCP
-      run: |
-        echo "=== Checking current directory ==="
-        ls -l
-        echo "=== Checking docker-compose.yml ==="
-        ls -l docker-compose.yml || echo "⚠️ docker-compose.yml 파일이 존재하지 않습니다!"
-
     # 1️⃣ 최신 코드 가져오기
     - name: Checkout code
       uses: actions/checkout@v3
@@ -52,6 +45,12 @@ jobs:
           
           # 프로젝트 디렉토리로 이동
           cd /home/ec2-user/app
+          
+          # docker-compose.yml 파일 확인 및 생성
+          if [ ! -f docker-compose.yml ]; then
+            echo "⚠️ docker-compose.yml 파일이 존재하지 않습니다!"
+            exit 1
+          fi
           
           # 기존 컨테이너 중지 및 삭제
           docker-compose down || true
