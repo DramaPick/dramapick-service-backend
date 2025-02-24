@@ -17,7 +17,7 @@ jobs:
     # 2️⃣ Docker 이미지 빌드 및 Docker Hub에 푸시
     - name: Build and Push Docker Image
       run: |
-        cd /home/ec2-user/app # 추가
+        cd /home/ec2-user/app
         docker build -t fastapi-app .
         echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
         docker tag fastapi-app ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
