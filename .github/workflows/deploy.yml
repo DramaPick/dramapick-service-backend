@@ -3,7 +3,7 @@ name: Deploy FastAPI to EC2
 on:
   push:
     branches:
-      - main  # main 브랜치에 코드가 푸시될 때 실행
+      - master  # master 브랜치에 코드가 푸시될 때 실행
 
 jobs:
   deploy:
