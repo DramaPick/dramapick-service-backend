@@ -68,10 +68,8 @@ jobs:
           
           # 프로젝트 디렉토리로 이동
           cd /home/ec2-user/app
-
-          # 기존 컨테이너 중지
-          docker-compose down || true
           
+          pip install --timeout=120 -r requirements.txt
           # 최신 Docker 이미지 가져오기
           docker pull ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
           
