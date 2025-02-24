@@ -3,42 +3,47 @@ name: Deploy FastAPI to EC2
 on:
   push:
     branches:
-      - main
+      - main  # main 브랜치에 코드가 푸시될 때 실행
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
+    # 1️⃣ 최신 코드 가져오기
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.10'
-
-    - name: Install dependencies
+    # 2️⃣ Docker 이미지 빌드 및 Docker Hub에 푸시
+    - name: Build and Push Docker Image
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        docker build -t fastapi-app .
+        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+        docker tag fastapi-app ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
+        docker push ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
 
-    - name: Copy files to EC2
-      uses: appleboy/scp-action@v0.1.0
+    # 3️⃣ EC2에 SSH 접속 후 최신 Docker 이미지 배포
+    - name: Deploy to EC2
+      uses: appleboy/ssh-action@master
       with:
         host: ${{ secrets.EC2_HOST }}
         username: ${{ secrets.EC2_USER }}
-        key: ${{ secrets.EC2_KEY }}
-        source: "."
-        target: "/path/to/your/project"
-
-    - name: SSH and deploy
-      uses: appleboy/ssh-action@v0.1.0
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USER }}
-        key: ${{ secrets.EC2_KEY }}
+        key: ${{ secrets.EC2_SSH_KEY }}
         script: |
           cd /path/to/your/project
+          
+          # 🔹 기존 컨테이너 중지 및 삭제
           docker-compose down
+          
+          # 🔹 .env 파일 생성 (GitHub Secrets에서 가져오기)
+          echo "AWS_ACCESS_KEY=${{ secrets.AWS_ACCESS_KEY }}" > .env
+          echo "AWS_SECRET_KEY=${{ secrets.AWS_SECRET_KEY }}" >> .env
+          echo "S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}" >> .env
+          echo "S3_REGION_NAME=${{ secrets.S3_REGION_NAME }}" >> .env
+          echo "GPT_API_KEY=${{ secrets.GPT_API_KEY }}" >> .env
+          
+          # 🔹 최신 Docker 이미지 가져오기
+          docker pull ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
+          
+          # 🔹 Docker Compose 실행
           docker-compose up -d --build
