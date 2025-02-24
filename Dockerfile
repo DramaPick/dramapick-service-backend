@@ -1,24 +1,29 @@
-# 1️⃣ Python 3.10 기반 이미지 사용
-FROM python:3.10
+# Use an official Python runtime as a parent image
+FROM python:3.10-slim
 
-# 2️⃣ 작업 디렉토리 설정
+# Set the working directory
 WORKDIR /app
 
-# 3️⃣ 필수 패키지 설치 (dlib 종속 라이브러리 추가)
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    cmake \
     build-essential \
-    libboost-all-dev \
-    libopencv-dev
+    cmake \
+    libopenblas-dev \
+    liblapack-dev \
+    libx11-dev \
+    libgtk-3-dev \
+    libboost-python-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# 4️⃣ 프로젝트 복사
-COPY . /app/
+# Copy the requirements file
+COPY requirements.txt .
 
-# 5️⃣ requirements.txt를 설치하기 전에 pip 업그레이드
+# Install Python dependencies
 RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
 
-# 6️⃣ 패키지 설치 실행
-RUN pip install --no-cache-dir -r ./requirements.txt
+# Copy the rest of the application code
+COPY . .
 
-# 7️⃣ FastAPI 실행
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Command to run the application
+CMD ["uvicorn", "main:app", "—host", "0.0.0.0", "—port", "8000"]
