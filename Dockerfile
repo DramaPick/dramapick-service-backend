@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
     libboost-all-dev \
     libopencv-dev
 
-# 4️⃣ 프로젝트 파일 복사
+# 4️⃣ 프로젝트 복사
 COPY . /app/
 
 # 5️⃣ requirements.txt를 설치하기 전에 pip 업그레이드
