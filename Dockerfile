@@ -1,5 +1,5 @@
 # Use an official Python runtime as a parent image
-FROM python:3.10
+FROM python:3.10-slim
 
 # Set the working directory
 WORKDIR /app
@@ -19,7 +19,6 @@ RUN apt-get update && apt-get install -y \
 COPY ./requirements.txt /app/
 
 # Install Python dependencies
-RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy the rest of the application code
