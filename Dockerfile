@@ -1,11 +1,11 @@
 # Use an official Python runtime as a parent image
-FROM python:3.10-slim
+FROM python:3.10
 
 # Set the working directory
 WORKDIR /app
 
-# 필수 시스템 패키지 설치 (한 줄로 실행)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     libopenblas-dev \
@@ -13,16 +13,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libx11-dev \
     libgtk-3-dev \
     libboost-python-dev \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Upgrade pip before installing dependencies
-# RUN pip install --upgrade pip
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the requirements file
 COPY ./requirements.txt /app/
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --prefer-binary --timeout 1200 -r requirements.txt
+RUN pip install --upgrade pip
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy the rest of the application code
 COPY . /app/
