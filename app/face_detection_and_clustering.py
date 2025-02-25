@@ -2,7 +2,6 @@ import numpy as np
 import os
 import cv2
 from dotenv import load_dotenv
-from botocore.exceptions import NoCredentialsError
 import dlib
 import face_recognition
 from imutils import face_utils
