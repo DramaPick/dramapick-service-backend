@@ -45,7 +45,7 @@ fsspec==2025.2.0
 gast==0.6.0
 gcs-oauth2-boto-plugin==3.2
 gdown==5.2.0
-grpcio==1.62.2
+grpcio
 grpcio-status==1.70.0
 gsutil==5.33
 gunicorn==23.0.0
