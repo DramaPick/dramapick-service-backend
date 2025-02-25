@@ -4,7 +4,7 @@ python-dotenv
 boto3
 botocore
 opencv-python
-dlib>=19.24.2
+dlib>=19.24.2 --find-links https://pypi.anaconda.org/menpo/simple  # 바이너리 버전 사용
 numpy
 imutils
 scikit-learn
