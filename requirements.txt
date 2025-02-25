@@ -4,7 +4,7 @@ python-dotenv
 boto3
 botocore
 opencv-python
-dlib>=19.24.2
+dlib==19.24.2
 numpy
 imutils
 scikit-learn
