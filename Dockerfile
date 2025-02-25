@@ -20,7 +20,7 @@ COPY ./requirements.txt /app/
 
 # Install Python dependencies
 RUN pip install --upgrade pip
-RUN pip install --no-cache-dir --prefer-binary --timeout 600 -r /app/requirements.txt
+RUN pip install --no-cache-dir --prefer-binary --timeout 1200 -r /app/requirements.txt
 
 # Copy the rest of the application code
 COPY . /app/
