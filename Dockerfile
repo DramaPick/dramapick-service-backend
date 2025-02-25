@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip before installing dependencies
-RUN pip install --upgrade pip
+# RUN pip install --upgrade pip
 
 # Copy the requirements file
 COPY ./requirements.txt /app/
