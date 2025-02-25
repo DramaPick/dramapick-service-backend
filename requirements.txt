@@ -4,7 +4,7 @@ python-dotenv
 boto3
 botocore
 opencv-python
-dlib
+dlib>=19.24.2 --no-cache-dir --find-links https://pypi.anaconda.org/menpo/simple
 numpy
 imutils
 scikit-learn

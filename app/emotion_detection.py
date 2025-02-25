@@ -5,7 +5,6 @@ import re
 from deepface import DeepFace
 from multiprocessing import Pool, cpu_count
 from dotenv import load_dotenv
-import mediapipe as mp
 
 load_dotenv()
 
