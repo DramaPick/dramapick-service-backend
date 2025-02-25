@@ -25,53 +25,51 @@ jobs:
         docker tag fastapi-app ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
         docker push ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
 
-    # 3️⃣ EC2에 필요한 파일 업로드
+    # 3️⃣-1 docker-compose.yml 업로드
     - name: Upload docker-compose.yml to EC2
       uses: appleboy/scp-action@master
       with:
         host: ${{ secrets.EC2_HOST }}
-        username: ubuntu
+        username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
         source: "./docker-compose.yml"
         target: "/home/ubuntu/app/"
-    
-    # 업로드
+
+    # 3️⃣-2 Dockerfile 업로드
     - name: Upload Dockerfile to EC2
       uses: appleboy/scp-action@master
       with:
         host: ${{ secrets.EC2_HOST }}
-        username: ubuntu
+        username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
         source: "./Dockerfile"
         target: "/home/ubuntu/app/"
 
-    # 3️⃣-1 EC2 환경 변수 확인 및 디렉토리 체크
-    - name: Test SSH Connection & Check Environment
+    # 3️⃣-3 requirements.txt 업로드
+    - name: Upload requirements.txt to EC2
+      uses: appleboy/scp-action@master
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        source: "./requirements.txt"
+        target: "/home/ubuntu/app/"
+    
+    - name: Test SSH Connection
       uses: appleboy/ssh-action@master
       with:
         host: ${{ secrets.EC2_HOST }}
-        username: ubuntu
+        username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
           echo "✅ SSH 연결 성공!"
-          
-          # 🔍 EC2 환경 변수 확인
-          echo "🔹 EC2_USER: $(whoami)"
-          echo "🔹 EC2_HOST: $(hostname -I)"
-
-          # 📂 /home/ubuntu/app 디렉터리 확인 및 생성
-          if [ ! -d "/home/ubuntu/app" ]; then
-            echo "📂 /home/ubuntu/app 디렉터리가 없습니다. 생성합니다."
-            mkdir -p /home/ubuntu/app
-          fi
-          ls -al /home/ubuntu/app  # 디렉터리 내용 확인
-
+    
     # 4️⃣ EC2에 SSH 접속 후 최신 Docker 이미지 배포
     - name: Deploy to EC2
       uses: appleboy/ssh-action@master
       with:
         host: ${{ secrets.EC2_HOST }}
-        username: ubuntu
+        username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
           # 디스크 공간 확보
@@ -79,32 +77,32 @@ jobs:
           
           # 프로젝트 디렉토리로 이동
           cd /home/ubuntu/app
-
+          
+          pip install --timeout=120 -r requirements.txt
           # 최신 Docker 이미지 가져오기
           docker pull ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
           
+          
           # 필수 파일 존재 여부 확인
-          for file in docker-compose.yml Dockerfile; do
-            if [ ! -f "$file" ]; then
-              echo "⚠️ $file 파일이 존재하지 않습니다!"
-              exit 1
-            fi
-          done
+          if [ ! -f docker-compose.yml ]; then
+            echo "⚠️ docker-compose.yml 파일이 존재하지 않습니다!"
+            exit 1
+          fi
+          
+          if [ ! -f Dockerfile ]; then
+            echo "⚠️ Dockerfile이 존재하지 않습니다!"
+            exit 1
+          fi
           
           # 기존 컨테이너 중지 및 삭제
           docker-compose down || true
           
           # .env 파일 생성 (GitHub Secrets에서 가져오기)
-          cat <<EOF > .env
-          AWS_ACCESS_KEY=${{ secrets.AWS_ACCESS_KEY }}
-          AWS_SECRET_KEY=${{ secrets.AWS_SECRET_KEY }}
-          S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
-          S3_REGION_NAME=${{ secrets.S3_REGION_NAME }}
-          GPT_API_KEY=${{ secrets.GPT_API_KEY }}
-          EOF
-          
-          # docker-compose 실행 권한 부여
-          chmod +x docker-compose.yml
+          echo "AWS_ACCESS_KEY=${{ secrets.AWS_ACCESS_KEY }}" > .env
+          echo "AWS_SECRET_KEY=${{ secrets.AWS_SECRET_KEY }}" >> .env
+          echo "S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}" >> .env
+          echo "S3_REGION_NAME=${{ secrets.S3_REGION_NAME }}" >> .env
+          echo "GPT_API_KEY=${{ secrets.GPT_API_KEY }}" >> .env
           
           # Docker Compose 실행
-          docker-compose up -d
+          docker-compose up -d --build
