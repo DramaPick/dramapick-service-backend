@@ -106,4 +106,4 @@ jobs:
           chmod +x docker-compose.yml
           
           # Docker Compose 실행
-          docker-compose up -d
+          docker-compose --env-file .env up -d

@@ -2,19 +2,13 @@ version: '3.8'
 
 services:
   fastapi:
-    image: $FASTAPI_IMAGE  # GitHub Actions에서 최신 이미지를 빌드하고 푸시한 후 사용
+    image: ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
     build: .
     container_name: fastapi-app
     ports:
       - "8000:8000"
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - S3_REGION_NAME=${S3_REGION_NAME}
-      - GPT_API_KEY=${GPT_API_KEY}
+    env_file:
+      - .env
     depends_on:
       - redis
     restart: always
