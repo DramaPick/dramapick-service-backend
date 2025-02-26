@@ -32,7 +32,8 @@ origins = [
     "http://localhost:3000",  # 로컬 개발 환경
     "http://127.0.0.1:3000",
     "http://localhost:8000",  # 로컬 개발 환경
-    "http://127.0.0.1:8000",
+    "http://127.0.0.1:8000"
+    "http://43.203.198.88:8000"
     "http://test-fastapi-bucket.s3-website.ap-northeast-2.amazonaws.com"  # S3 정적 웹사이트 호스팅 URL
 ]
 
