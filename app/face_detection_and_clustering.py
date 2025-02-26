@@ -7,7 +7,7 @@ import face_recognition
 from imutils import face_utils
 from numpy.linalg import norm
 from sklearn.cluster import AgglomerativeClustering
-from s3_client import s3_client
+from .s3_client import s3_client
 import re
 import io
 import multiprocessing
