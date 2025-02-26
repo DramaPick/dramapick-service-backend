@@ -15,4 +15,5 @@ requests
 lxml
 redis
 deepface
-tensorflow==2.11.0  # Specify a compatible version of TensorFlow
+numpy==1.26.4
+tensorflow==2.16.2
