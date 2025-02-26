@@ -48,6 +48,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.options("/{full_path:path}")
+async def preflight_request(full_path: str):
+    return {"message": "CORS preflight request successful"}
 
 @app.middleware("http")
 async def add_cors_headers(request, call_next):
