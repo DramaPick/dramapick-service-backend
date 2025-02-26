@@ -7,7 +7,6 @@ from moviepy.editor import VideoFileClip
 import os
 import warnings
 from datetime import datetime
-from google.cloud import speech
 import io
 import re
 from s3_client import s3_client
@@ -52,29 +51,6 @@ def parse_time(srt_time_str):
 def time_to_srt_format(time):
     """timedelta를 SRT 시간 문자열로 변환"""
     return str(time).split('.')[0].replace(',', '.')
-
-
-def transcribe_audio(audio_path):
-    """Google STT API를 사용하여 오디오 파일을 텍스트로 변환"""
-    client = speech.SpeechClient()
-
-    with io.open(audio_path, "rb") as audio_file:
-        content = audio_file.read()
-
-    audio = speech.RecognitionAudio(content=content)
-    config = speech.RecognitionConfig(
-        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-        sample_rate_hertz=16000,
-        language_code="ko-KR",
-    )
-
-    response = client.recognize(config=config, audio=audio)
-
-    transcripts = []
-    for result in response.results:
-        transcripts.append(result.alternatives[0].transcript)
-
-    return transcripts
 
 
 def extract_audio(video_path, audio_output_path):
@@ -200,7 +176,6 @@ def merge_srt_lines(input_srt_path, output_srt_path, min_gap=1.0):
     """
     # Google STT API를 사용하여 오디오 파일을 텍스트로 변환
     transcripts = pysrt.open(input_srt_path)
-    # transcripts = transcribe_audio(input_srt_path)
 
     # 자막 합치기
     merged_subs = []
