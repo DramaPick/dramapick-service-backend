@@ -2,9 +2,11 @@ import redis
 import json
 import requests
 from lxml import html
+import os
 
 # REDIS 연결 설정
-redis_client = redis.StrictRedis(host="localhost", port=6379, db=0, decode_responses=True)
+redis_host = os.getenv("REDIS_HOST", "redis")  # 환경 변수 없으면 기본값 'redis'
+redis_client = redis.StrictRedis(host=redis_host, port=6379, db=0, decode_responses=True)
 
 def search_drama(drama_title: str):
     # Redis에 캐시 데이터가 있는지 확인

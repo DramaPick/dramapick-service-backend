@@ -101,6 +101,8 @@ jobs:
           S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
           S3_REGION_NAME=${{ secrets.S3_REGION_NAME }}
           GPT_API_KEY=${{ secrets.GPT_API_KEY }}
+          REDIS_HOST=redis
+          REDIS_PORT=6379
           EOF
           
           # docker-compose 실행 권한 부여
