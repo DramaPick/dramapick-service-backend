@@ -1,4 +1,4 @@
-from .s3_client import s3_client
+from s3_client import s3_client
 from dotenv import load_dotenv
 from botocore.exceptions import NoCredentialsError
 import os

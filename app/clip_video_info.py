@@ -1,8 +1,8 @@
 from moviepy.editor import VideoFileClip, TextClip, CompositeVideoClip, ImageClip
 import os
-from .s3_client import s3_client
+from s3_client import s3_client
 from botocore.exceptions import NoCredentialsError
-from .drama_crawling import search_drama, get_drama
+from drama_crawling import search_drama, get_drama
 from fastapi import HTTPException
 import re
 

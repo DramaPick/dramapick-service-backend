@@ -10,7 +10,7 @@ from datetime import datetime
 from google.cloud import speech
 import io
 import re
-from .s3_client import s3_client
+from s3_client import s3_client
 from botocore.exceptions import NoCredentialsError
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "dramapickstt-4efdec08fb9c.json"

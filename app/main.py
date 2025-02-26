@@ -9,18 +9,18 @@ from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from io import BytesIO
-from .face_detection_and_clustering import face_detection_and_clustering
-from .emotion_detection import emotion_detection
+from face_detection_and_clustering import face_detection_and_clustering
+from emotion_detection import emotion_detection
 import mimetypes
-from .s3_client import s3_client
+from s3_client import s3_client
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import asyncio
-from .person_score import person_score
+from person_score import person_score
 import re
-from .adjust_highlights import scene_detection
-from .drama_crawling import search_drama, get_drama
-from .clip_video_info import clip_and_save_highlights, insert_title_into_video
-from .title_generation import generate_highlight_title
+from adjust_highlights import scene_detection
+from drama_crawling import search_drama, get_drama
+from clip_video_info import clip_and_save_highlights, insert_title_into_video
+from title_generation import generate_highlight_title
 
 TEMP_DIR = 'tmp'
 
