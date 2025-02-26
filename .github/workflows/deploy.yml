@@ -72,6 +72,7 @@ jobs:
         host: ${{ secrets.EC2_HOST }}
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
+        command_timeout: 200
         script: |
           # 디스크 공간 확보
           docker system prune -a -f
