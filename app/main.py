@@ -28,9 +28,17 @@ load_dotenv()
 
 app = FastAPI()
 
+origins = [
+    "http://localhost:3000",  # 로컬 개발 환경
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",  # 로컬 개발 환경
+    "http://127.0.0.1:8000",
+    "http://test-fastapi-bucket.s3-website.ap-northeast-2.amazonaws.com"  # S3 정적 웹사이트 호스팅 URL
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 요청을 허용할 출처 목록
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],  # 모든 HTTP 메서드 (GET, POST, PUT 등) 허용
     allow_headers=["*"],  # 모든 헤더 허용
@@ -264,11 +272,7 @@ def get_video_from_s3(s3_url):
 
 # 업로드 후 감정 분석 자동 수행
 @app.post("/upload")
-async def upload_video(
-    file: UploadFile = File(...),
-    dramaTitle: str = Form(...),
-    background_tasks: BackgroundTasks = None
-):
+async def upload_video(file: UploadFile = File(...), dramaTitle: str = Form(...), background_tasks: BackgroundTasks = None):
     task_id = str(int(time.time()))  # 간단한 작업 ID 생성
     add_or_update_task(task_id, "업로드 중")
 
