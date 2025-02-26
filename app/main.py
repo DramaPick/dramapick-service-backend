@@ -21,6 +21,7 @@ from adjust_highlights import scene_detection
 from drama_crawling import search_drama, get_drama
 from clip_video_info import clip_and_save_highlights, insert_title_into_video
 from title_generation import generate_highlight_title
+from starlette.middleware.base import BaseHTTPMiddleware
 
 TEMP_DIR = 'tmp'
 
@@ -28,27 +29,31 @@ load_dotenv()
 
 app = FastAPI()
 
-origins = [
-    "http://localhost:3000",  # 로컬 개발 환경
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",  # 로컬 개발 환경
-    "http://127.0.0.1:8000"
-    "http://43.203.198.88:8000"
-    "http://test-fastapi-bucket.s3-website.ap-northeast-2.amazonaws.com"  # S3 정적 웹사이트 호스팅 URL
-]
+
+class JWTMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # JWT 인증 로직
+        return await call_next(request)
+
+
+app.add_middleware(JWTMiddleware)
+
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # 모든 HTTP 메서드 (GET, POST, PUT 등) 허용
-    allow_headers=["*"],  # 모든 헤더 허용
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
-@app.get("/")
-async def root():
-    return {"message": "API is running"}
+@app.middleware("http")
+async def add_cors_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    return response
 
 @app.get("/search")
 async def search_drama_api(drama_title: str):
@@ -288,12 +293,12 @@ async def upload_video(file: UploadFile = File(...), dramaTitle: str = Form(...)
     # 비동기로 감정 분석 수행
     background_tasks.add_task(process_video, s3_url, task_id)
 
-    return {
+    return JSONResponse(content={
         "task_id": task_id,
         "status": "업로드 완료 및 감정 분석 진행 중",
         "s3_url": s3_url,
         "dramaTitle": dramaTitle
-    }
+    })
 
 @app.get("/person/dc")
 def detect_and_cluster(s3_url: str, task_id: str):
