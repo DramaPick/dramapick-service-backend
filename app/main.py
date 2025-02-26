@@ -26,11 +26,6 @@ TEMP_DIR = 'tmp'
 
 load_dotenv()
 
-# CORS 미들웨어 추가
-origins = [
-    "http://localhost:3000",  # 허용할 출처
-    # 여기에 다른 출처를 추가할 수 있습니다.
-]
 app = FastAPI()
 
 app.add_middleware(
@@ -40,6 +35,11 @@ app.add_middleware(
     allow_methods=["*"],  # 모든 HTTP 메서드 (GET, POST, PUT 등) 허용
     allow_headers=["*"],  # 모든 헤더 허용
 )
+
+
+@app.get("/")
+async def root():
+    return {"message": "API is running"}
 
 @app.get("/search")
 async def search_drama_api(drama_title: str):
