@@ -190,15 +190,16 @@ def face_detection_and_clustering(s3_url, task_id):
         local_path = os.path.join("tmp", f"{base_name}.mov")  # 명시적으로 .mov 확장자 지정
     elif "mp4" in s3_url:
         local_path = os.path.join("tmp", f"{base_name}.mp4")  # 명시적으로 .mp4 확장자 지정 
-    print(f"------------ FACE DETECTION AND CLUSTERING -> local_path : {local_path} ------------")
+    print(f"⏳ ------------ FACE DETECTION AND CLUSTERING -> local_path : {local_path} ------------")
 
 
     cap = cv2.VideoCapture(local_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
 
-    # delete_file(local_path)
     frame_interval = (int(fps) - 1) * 1
     frame_number = 0
+
+    print(f"⏳ frame interval: {frame_interval}")
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -214,25 +215,32 @@ def face_detection_and_clustering(s3_url, task_id):
 
     cap.release()
 
+    print("☎️ 프레임 저장 완료 ☎️")
+
     # 이미지 파일 목록
     image_files = os.listdir(TEMP_DIR)
     image_paths = []
     for file in image_files:
         if "mov" in os.path.join(TEMP_DIR, file):
             pass
+        elif "mp4" in os.path.join(TEMP_DIR, file):
+            pass
         else:
             image_paths.append(os.path.join(TEMP_DIR, file))
     
     features, filenames = extract_face_features_parallel(image_paths)
 
+    print("☎️ 이미지 경로 mov 제외 리스트에 추가 완료 ☎️")
     if len(features) == 0:
         print("얼굴 인식된 이미지가 없습니다. 클러스터링을 수행할 수 없습니다.")
         return None
 
     # 코사인 유사도를 계산하여 군집화
+    print("🪫 코사인 유사도 기반 군집화 학습 시작")
     clustering = AgglomerativeClustering(distance_threshold=0.05, n_clusters=None, metric='cosine', linkage='average')
     clustering.fit(features)
 
+    print("🪫 대표 이미지 선정 준비")
     representative_images = []
     angles = calculate_face_angle_parallel(filenames)
     

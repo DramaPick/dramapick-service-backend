@@ -5,16 +5,10 @@ import whisper
 import cv2
 from moviepy.editor import VideoFileClip
 import os
-import warnings
 from datetime import datetime
-import io
 import re
 from s3_client import s3_client
 from botocore.exceptions import NoCredentialsError
-
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "dramapickstt-4efdec08fb9c.json"
-warnings.filterwarnings('ignore')
-
 
 # S3 설정
 AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")

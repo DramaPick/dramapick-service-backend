@@ -21,22 +21,12 @@ from adjust_highlights import scene_detection
 from drama_crawling import search_drama, get_drama
 from clip_video_info import clip_and_save_highlights, insert_title_into_video
 from title_generation import generate_highlight_title
-from starlette.middleware.base import BaseHTTPMiddleware
 
 TEMP_DIR = 'tmp'
 
 load_dotenv()
 
 app = FastAPI()
-
-
-class JWTMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        # JWT 인증 로직
-        return await call_next(request)
-
-
-app.add_middleware(JWTMiddleware)
 
 origins = ["*"]
 
@@ -47,13 +37,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.middleware("http")
-async def add_cors_headers(request, call_next):
-    response = await call_next(request)
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    return response
 
 @app.get("/search")
 async def search_drama_api(drama_title: str):
@@ -304,7 +287,7 @@ async def upload_video(file: UploadFile = File(...), dramaTitle: str = Form(...)
 def detect_and_cluster(s3_url: str, task_id: str):
     # 인물 감지 및 클러스터링
     print(f"------------------{task_id} 작업------------------")
-    print("------------------인물 감지 및 클러스터링 시작: {s3_url}------------------")
+    print(f"------------------인물 감지 및 클러스터링 시작: {s3_url}------------------")
     representative_images = face_detection_and_clustering(s3_url, task_id)  # Face Detection and Clustering
     if representative_images is None:
         return JSONResponse(content={"message": "클러스터링된 인물이 존재하지 않습니다."})
