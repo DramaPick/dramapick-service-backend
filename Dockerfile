@@ -24,7 +24,5 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 # Copy the rest of the application code
 COPY app/ . 
 
-RUN chmod -R 777 /home/ec2-user/app/tmp
-
 # Command to run the application
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
