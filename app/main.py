@@ -42,12 +42,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.middleware("http")
-async def add_cors_headers(request, call_next):
-    response = await call_next(request)
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    return response
-
 @app.get("/search")
 async def search_drama_api(drama_title: str):
     result = search_drama(drama_title)
