@@ -8,34 +8,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TEMP_DIR = 'tmp_emotion'
-
-if not os.path.exists(TEMP_DIR):
-    os.makedirs(TEMP_DIR)
-
-# --- S3에서 비디오 다운로드 및 감정 분석 ---
-def emotion_detection(s3_url, task_id, emotion_threshold=0.5):
-    bucket_name, object_key = parse_s3_url(s3_url)
-    filename = object_key.split('/')[-1]
-    base_name = filename.split('.')[0]  # 확장자 제외한 파일명
-    if "mov" in s3_url:
-        local_path = os.path.join("tmp", f"{base_name}.mov")  # 명시적으로 .mov 확장자 지정
-    elif "mp4" in s3_url:
-        local_path = os.path.join("tmp", f"{base_name}.mp4")  # 명시적으로 .mp4 확장자 지정
-    print(f"------------ EMOTION DETECTION local_path : {local_path} ------------")
-
-    highlights = extract_emotion_highlights(local_path, emotion_threshold)
-
-    # delete_file(local_path)
-
-    if not highlights:
-        print("No emotional highlights detected.")
-        return [[], 0]
-
-    # 하이라이트 구간 병합 및 반환
-    merged_intervals = merge_emotional_intervals(highlights)
-    return [merged_intervals, len(merged_intervals)]
-
 # --- 비디오에서 감정 분석 하이라이트 추출 ---
 def extract_emotion_highlights(video_path, emotion_threshold=0.5):
     cap = cv2.VideoCapture(video_path)
@@ -152,20 +124,30 @@ def delete_file(file_path):
     except Exception as e:
         print(f"Error deleting file: {e}")
 
+# --- S3에서 비디오 다운로드 및 감정 분석 ---
 
-# --- 실행 예시 ---
-if __name__ == "__main__":
-    s3_url = "https://my-bucket.s3.ap-northeast-2.amazonaws.com/test_video.mp4"
-    task_id = "12345"
-    emotion_threshold = 0.5
 
-    result = emotion_detection(s3_url, task_id, emotion_threshold)
-    intervals, count = result
+def emotion_detection(s3_url, task_id, emotion_threshold=0.5):
+    bucket_name, object_key = parse_s3_url(s3_url)
+    filename = object_key.split('/')[-1]
+    base_name = filename.split('.')[0]  # 확장자 제외한 파일명
+    if "mov" in s3_url:
+        local_path = os.path.join(
+            "tmp", f"{base_name}.mov")  # 명시적으로 .mov 확장자 지정
+    elif "mp4" in s3_url:
+        local_path = os.path.join(
+            "tmp", f"{base_name}.mp4")  # 명시적으로 .mp4 확장자 지정
+    print(
+        f"------------ EMOTION DETECTION local_path : {local_path} ------------")
 
-    if intervals:
-        print("🔹 감정 하이라이트 구간 및 개수:")
-        print(f"Total Highlights: {count}")
-        for start, end in intervals:
-            print(f"Start: {start:.2f}s, End: {end:.2f}s, Duration: {end - start:.2f}s")
-    else:
-        print("🔸 감정 하이라이트 없음")
+    highlights = extract_emotion_highlights(local_path, emotion_threshold)
+
+    # delete_file(local_path)
+
+    if not highlights:
+        print("No emotional highlights detected.")
+        return [[], 0]
+
+    # 하이라이트 구간 병합 및 반환
+    merged_intervals = merge_emotional_intervals(highlights)
+    return [merged_intervals, len(merged_intervals)]

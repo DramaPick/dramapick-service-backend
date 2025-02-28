@@ -42,6 +42,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+async def root():
+    return {"message": "FastAPI is running"}
+
+
 @app.get("/search")
 async def search_drama_api(drama_title: str):
     result = search_drama(drama_title)
@@ -265,11 +270,10 @@ def get_video_from_s3(s3_url):
 
 # 업로드 후 감정 분석 자동 수행
 @app.post("/upload")
-async def upload_video(file: UploadFile = File(...), dramaTitle: str = Form(...), background_tasks: BackgroundTasks = None):
+async def upload_video(file: UploadFile = File(...), dramaTitle: str = Form(...)):
     task_id = str(int(time.time()))  # 간단한 작업 ID 생성
     add_or_update_task(task_id, "업로드 중")
 
-    # S3에 파일 업로드
     filename = f"{task_id}_{file.filename}"
     s3_url = upload_to_s3(file.file, filename, file.content_type)
     print(f"성공적으로 업로드 완료 : {s3_url}")
