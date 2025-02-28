@@ -278,7 +278,9 @@ async def upload_video(file: UploadFile = File(...), dramaTitle: str = Form(...)
     get_video_from_s3(s3_url)
 
     # 비동기로 감정 분석 수행
-    background_tasks.add_task(process_video, s3_url, task_id)
+    # background_tasks.add_task(process_video, s3_url, task_id)
+
+    process_video(s3_url, task_id)
 
     return JSONResponse(content={
         "task_id": task_id,
