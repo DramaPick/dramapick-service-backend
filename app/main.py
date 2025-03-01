@@ -29,6 +29,7 @@ load_dotenv()
 app = FastAPI()
 
 origins = [
+    "https://dramapick.site",
     "http://dramapick-deploy-test.s3-website.ap-northeast-2.amazonaws.com",
     "http://localhost:3000",
     "http://127.0.0.1:3000"
