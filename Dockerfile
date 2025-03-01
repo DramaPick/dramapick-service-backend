@@ -16,7 +16,6 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update && apt-get install -y ffmpeg 
-RUN apt-get update && apt-get install -y libav-tools
 
 # Copy the requirements file
 COPY ./requirements.txt /app/
