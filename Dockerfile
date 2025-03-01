@@ -4,7 +4,7 @@ FROM python:3.9
 # Set the working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including ffmpeg
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     libx11-dev \
     libgtk-3-dev \
     libboost-python-dev \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the requirements file
