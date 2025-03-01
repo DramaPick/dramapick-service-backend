@@ -13,8 +13,10 @@ RUN apt-get update && apt-get install -y \
     libx11-dev \
     libgtk-3-dev \
     libboost-python-dev \
-    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get install -y ffmpeg 
+RUN apt-get install -y libav-tools
 
 # Copy the requirements file
 COPY ./requirements.txt /app/
