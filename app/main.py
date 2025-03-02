@@ -44,7 +44,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/")
+@app.get("/app")
 async def root():
     return {"message": "FastAPI is running"}
 
