@@ -22,15 +22,17 @@ RUN apt-get update && apt-get install -y \
     software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
-# FFmpeg 의존성 라이브러리 설치 (PPA 제거)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libavdevice58 \
-    libavfilter7 \
-    libavformat58 \
-    libavcodec58 \
-    libswresample3 \
-    libswscale5 \
-    ffmpeg \
+# FFmpeg PPA 추가 및 설치
+RUN add-apt-repository ppa:jonathonf/ffmpeg-4 && apt-get update && apt-get install -y ffmpeg
+
+# FFmpeg 라이브러리 설치 (위 PPA에서 ffmpeg을 설치한 후 추가)
+RUN apt-get install -y --no-install-recommends \
+    libavdevice-dev \
+    libavfilter-dev \
+    libavformat-dev \
+    libavcodec-dev \
+    libswresample-dev \
+    libswscale-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Python 종속성 설치
