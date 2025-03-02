@@ -26,7 +26,7 @@ TEMP_DIR = 'tmp'
 
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI(root_path="/api")
 
 origins = [
     "https://dramapick.site",
