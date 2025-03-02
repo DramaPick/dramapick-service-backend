@@ -19,21 +19,16 @@ RUN apt-get update && apt-get install -y \
     libx11-dev \
     libgtk-3-dev \
     libboost-python-dev \
-    software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
-# FFmpeg PPA 추가 및 설치
-RUN add-apt-repository ppa:jonathonf/ffmpeg-4 && apt-get update && apt-get install -y ffmpeg
+# FFmpeg 바이너리 다운로드 및 설치
+RUN wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-i686-static.tar.xz -O /tmp/ffmpeg.tar.xz \
+    && tar -xf /tmp/ffmpeg.tar.xz -C /tmp \
+    && mv /tmp/ffmpeg*/bin/ffmpeg /usr/local/bin/ \
+    && rm -rf /tmp/ffmpeg*
 
-# FFmpeg 라이브러리 설치 (위 PPA에서 ffmpeg을 설치한 후 추가)
-RUN apt-get install -y --no-install-recommends \
-    libavdevice-dev \
-    libavfilter-dev \
-    libavformat-dev \
-    libavcodec-dev \
-    libswresample-dev \
-    libswscale-dev \
-    && rm -rf /var/lib/apt/lists/*
+# FFmpeg 확인
+RUN ffmpeg -version
 
 # Python 종속성 설치
 COPY ./requirements.txt /app/
