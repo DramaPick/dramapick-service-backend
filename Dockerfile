@@ -24,16 +24,15 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-    # 시스템 종속성 설치
-RUN apt-get update && apt-get install -y && apt-get dist-upgrade \ 
-    libavdevice-dev \
-    libavfilter-dev \
-    libavformat-dev \
-    libavcodec-dev \
-    libswscale-dev \
-    libswresample-dev \
-    libpostproc-dev \
-    ffmpeg \
+# 시스템 종속성 및 라이브러리 설치
+RUN apt-get update && apt-get install -y \
+    libavdevice \
+    libavfilter \
+    libavformat \
+    libavcodec- \
+    libswscale \
+    libswresample \
+    libpostproc \
     && rm -rf /var/lib/apt/lists/*
 
 # FFmpeg 바이너리 확인
