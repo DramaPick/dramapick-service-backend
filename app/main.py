@@ -26,10 +26,11 @@ TEMP_DIR = 'tmp'
 
 load_dotenv()
 
-app = FastAPI(root_path="/api")
+app = FastAPI()
 
 origins = [
     "https://dramapick.site",
+    "https://0k6m4u1tdj.execute-api.us-east-1.amazonaws.com",
     "https://x1yim80pni.execute-api.ap-northeast-2.amazonaws.com",
     "http://dramapick-deploy-test.s3-website.ap-northeast-2.amazonaws.com",
     "http://localhost:3000",
