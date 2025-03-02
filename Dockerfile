@@ -35,6 +35,13 @@ RUN apt-get update && apt-get install -y \
     libx11-dev \
     libgtk-3-dev \
     libboost-python-dev \
+    libavdevice-dev \
+    libavfilter-dev \
+    libavformat-dev \
+    libavcodec-dev \
+    libswscale-dev \
+    libswresample-dev \
+    libpostproc-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # FFmpeg 바이너리 복사 (첫 번째 단계에서 다운로드한 FFmpeg을 두 번째 단계로 복사)
