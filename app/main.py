@@ -362,7 +362,7 @@ async def select_actors(video_id: str, request: Request):
         sorted_highlights = person_score(s3_url, task["highlights"], selected_actors)
     print(f"person scoring 기반으로 정렬된 하이라이트 : {sorted_highlights}")
 
-    return {"message": "사용자 선택 완료", "video_id": video_id, "data": users, "status": "success", "sorted_highlights": sorted_highlights}
+    return JSONResponse(content={"message": "사용자 선택 완료", "video_id": video_id, "data": users, "status": "success", "sorted_highlights": sorted_highlights})
 
 class HighlightRequest(BaseModel):
     s3_url: str
