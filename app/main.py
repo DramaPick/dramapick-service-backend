@@ -7,7 +7,7 @@ from botocore.exceptions import NoCredentialsError
 import os
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from io import BytesIO
 from face_detection_and_clustering import face_detection_and_clustering
 from emotion_detection import emotion_detection
@@ -45,10 +45,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/app")
+@app.options("/{full_path:path}")
+async def preflight_response(full_path: str):
+    return Response(
+        content="",
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "https://dramapick.site",
+            "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Accept",
+        }
+    )
+
+@app.get("/")
 async def root():
     return {"message": "FastAPI is running"}
-
 
 @app.get("/search")
 async def search_drama_api(drama_title: str):
