@@ -41,6 +41,9 @@ RUN apt-get update && apt-get install -y \
 COPY --from=base /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=base /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 
+# LD_LIBRARY_PATH 환경 변수에 라이브러리 경로 추가 (필요한 라이브러리가 있는 경로)
+ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+
 # FFmpeg 버전 확인
 RUN ffmpeg -version
 
