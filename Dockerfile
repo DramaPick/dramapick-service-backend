@@ -10,22 +10,6 @@ WORKDIR /app
 # FFmpeg 바이너리 복사
 COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 
-RUN apt-get update && \
-    apt-get install software-properties-common -y && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN add-apt-repository ppa:savoury1/ffmpeg4 && add-apt-repository ppa:savoury1/ffmpeg5 && apt-get update && apt-get upgrade && apt-get dist-upgrade && apt-get install ffmpeg
-
-# FFmpeg 의존성 라이브러리 설치
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libavdevice58 \
-    libavfilter7 \
-    libavformat58 \
-    libavcodec58 \
-    libswresample3 \
-    libswscale5 \
-    && rm -rf /var/lib/apt/lists/*
-
 # 시스템 종속성 설치
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -35,6 +19,18 @@ RUN apt-get update && apt-get install -y \
     libx11-dev \
     libgtk-3-dev \
     libboost-python-dev \
+    software-properties-common \
+    && rm -rf /var/lib/apt/lists/*
+
+# FFmpeg 의존성 라이브러리 설치 (PPA 제거)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libavdevice58 \
+    libavfilter7 \
+    libavformat58 \
+    libavcodec58 \
+    libswresample3 \
+    libswscale5 \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Python 종속성 설치
