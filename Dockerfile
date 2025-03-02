@@ -10,8 +10,12 @@ WORKDIR /app
 # FFmpeg 바이너리 복사
 COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 
+RUN add-apt-repository ppa:savoury1/ffmpeg4 && add-apt-repository ppa:savoury1/ffmpeg5
+
+RUN apt-get update && apt-get upgrade && apt-get dist-upgrade && apt-get install ffmpeg
+
 # FFmpeg 의존성 라이브러리 설치
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libavdevice58 \
     libavfilter7 \
     libavformat58 \
@@ -30,10 +34,6 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-dev \
     libboost-python-dev \
     && rm -rf /var/lib/apt/lists/*
-
-# 라이브러리 경로 설정
-RUN echo "/usr/local/lib" >> /etc/ld.so.conf.d/custom.conf && \
-    ldconfig
 
 # Python 종속성 설치
 COPY ./requirements.txt /app/
