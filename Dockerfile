@@ -24,12 +24,17 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# FFmpeg 소스 코드 다운로드 및 빌드
-RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git /ffmpeg \
-    && cd /ffmpeg \
-    && ./configure \
-    && make -j$(nproc) \
-    && make install
+    # 시스템 종속성 설치
+RUN apt-get update && apt-get install -y && apt-get dist-upgrade \ 
+    libavdevice-dev \
+    libavfilter-dev \
+    libavformat-dev \
+    libavcodec-dev \
+    libswscale-dev \
+    libswresample-dev \
+    libpostproc-dev \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 # FFmpeg 바이너리 확인
 RUN ffmpeg -version
