@@ -66,8 +66,7 @@ def extract_audio(video_path, audio_output_path):
 
     try:
         # subprocess를 사용하여 명령어 실행
-        subprocess.run(command, check=True,
-                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         print(f"Audio extraction successful! Saved to {audio_output_path}")
     except subprocess.CalledProcessError as e:
         print(f"Error extracting audio: {e.stderr.decode()}")
