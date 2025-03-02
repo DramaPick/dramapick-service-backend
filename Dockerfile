@@ -9,31 +9,29 @@ WORKDIR /app
 
 # FFmpeg 바이너리 복사
 COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
-
 # 시스템 종속성 설치
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
+    yasm \
+    nasm \
+    git \
     libopenblas-dev \
     liblapack-dev \
     libx11-dev \
     libgtk-3-dev \
     libboost-python-dev \
-    yasm \
-    nasm \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
-# 시스템 종속성 및 라이브러리 설치
-RUN apt-get update && apt-get install -y \
-    libavdevice \
-    libavfilter \
-    libavformat \
-    libavcodec- \
-    libswscale \
-    libswresample \
-    libpostproc \
-    && rm -rf /var/lib/apt/lists/*
+# FFmpeg 소스 다운로드 및 빌드
+RUN git clone --depth 1 https://git.ffmpeg.org/ffmpeg.git /ffmpeg \
+    && cd /ffmpeg \
+    && ./configure --prefix=/usr/local --enable-shared --disable-static \
+    && make -j$(nproc) \
+    && make install
+
+# LD_LIBRARY_PATH 환경 변수에 라이브러리 경로 추가
+ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 
 # FFmpeg 바이너리 확인
 RUN ffmpeg -version
