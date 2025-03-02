@@ -10,6 +10,10 @@ WORKDIR /app
 # FFmpeg 바이너리 복사
 COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
+    rm -rf /var/lib/apt/lists/*
+    
 RUN add-apt-repository ppa:savoury1/ffmpeg4 && add-apt-repository ppa:savoury1/ffmpeg5
 
 RUN apt-get update && apt-get upgrade && apt-get dist-upgrade && apt-get install ffmpeg
