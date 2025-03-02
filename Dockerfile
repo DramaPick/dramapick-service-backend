@@ -20,7 +20,6 @@ RUN apt-get update && apt-get install -y \
 
 # FFmpeg 바이너리 복사
 COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
-COPY --from=ffmpeg /usr/local/lib/ffmpeg /usr/local/lib/ffmpeg
 
 # Python 종속성 설치
 COPY ./requirements.txt /app/
