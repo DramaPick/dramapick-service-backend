@@ -10,14 +10,14 @@ WORKDIR /app
 # FFmpeg 바이너리 복사
 COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 
-# FFmpeg 의존성 라이브러리 설치 (필요한 라이브러리들을 추가)
+# FFmpeg 의존성 라이브러리 설치
 RUN apt-get update && apt-get install -y \
-    libavdevice-dev \
-    libavcodec-dev \
-    libavformat-dev \
-    libswscale-dev \
-    libvpx-dev \
-    libx264-dev \
+    libavdevice58 \
+    libavfilter7 \
+    libavformat58 \
+    libavcodec58 \
+    libswresample3 \
+    libswscale5 \
     && rm -rf /var/lib/apt/lists/*
 
 # 시스템 종속성 설치
@@ -30,6 +30,10 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-dev \
     libboost-python-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# 라이브러리 경로 설정
+RUN echo "/usr/local/lib" >> /etc/ld.so.conf.d/custom.conf && \
+    ldconfig
 
 # Python 종속성 설치
 COPY ./requirements.txt /app/
