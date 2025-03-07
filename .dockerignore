@@ -1,0 +1,6 @@
+# .dockerignore 파일 예시
+.git
+node_modules
+__pycache__
+*.log
+.env
