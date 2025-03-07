@@ -140,8 +140,6 @@ def clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highligh
         else:
             print(f"Local file not found, downloading from S3: {s3_url}")
             get_video_from_s3(s3_url)  # S3에서 다운로드
-
-        video = VideoFileClip(local_path)
         
         drama_info = get_drama_api(drama_title)
         if not drama_info:
@@ -161,6 +159,7 @@ def clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highligh
 
         url_list, output_path_list = [], []
         for idx, (start, end) in enumerate(adjusted_highlights):
+            video = VideoFileClip(local_path)
             highlight_clip = video.subclip(start, end)
 
             highlight_clip = crop_and_pad_to_1080x1920(highlight_clip)
