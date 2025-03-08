@@ -181,9 +181,9 @@ def clip_and_save_highlights(local_path, task_id, drama_title, adjusted_highligh
 
             print(f"Successfully saved highlight {idx + 1} in S3 BUCKET!!")
             
-            if os.path.exists(local_path):
-                os.remove(local_path)
-
+        if os.path.exists(local_path):
+            os.remove(local_path)
+            
         os.remove(txt_img1_path)
         os.remove(txt_img2_path)
 
