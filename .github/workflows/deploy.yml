@@ -13,40 +13,34 @@ jobs:
     # 1️⃣ 최신 코드 가져오기
     - name: Checkout code
       uses: actions/checkout@v3
-
-    - name: List files for debugging
-      run: ls -al
+      with:
+        fetch-depth: 1  # 과거 기록 없이 최신 코드만 가져옴
+    
+    # 실행 환경 정리
+    - name: Cleanup GitHub Actions runner
+      run: |
+        rm -rf $GITHUB_WORKSPACE/*  # 이전 실행 기록 삭제
 
     # 2️⃣ Docker 이미지 빌드 및 Docker Hub에 푸시
     - name: Build and Push Docker Image
       run: |
-        docker build -t fastapi-app .
+        docker build --no-cache -t fastapi-app .
         echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
         docker tag fastapi-app ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
         docker push ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
 
     # 3️⃣ EC2에 필요한 파일 업로드
-    - name: Upload docker-compose.yml to EC2
+    - name: Upload required files to EC2
       uses: appleboy/scp-action@master
       with:
         host: ${{ secrets.EC2_HOST }}
         username: ${{ secrets.EC2_USER }}
         key: ${{ secrets.EC2_SSH_KEY }}
-        source: "./docker-compose.yml"
-        target: "/home/ec2-user/app/"
-    
-    # 업로드
-    - name: Upload Dockerfile to EC2
-      uses: appleboy/scp-action@master
-      with:
-        host: ${{ secrets.EC2_HOST }}
-        username: ${{ secrets.EC2_USER }}
-        key: ${{ secrets.EC2_SSH_KEY }}
-        source: "./Dockerfile"
+        source: "./docker-compose.yml,./Dockerfile"
         target: "/home/ec2-user/app/"
 
-    # 3️⃣-1 EC2 환경 변수 확인 및 디렉토리 체크
-    - name: Test SSH Connection & Check Environment
+    # 3️⃣-1 EC2 SSH 연결 확인 및 환경 설정
+    - name: Check EC2 Environment
       uses: appleboy/ssh-action@master
       with:
         host: ${{ secrets.EC2_HOST }}
@@ -54,11 +48,10 @@ jobs:
         key: ${{ secrets.EC2_SSH_KEY }}
         script: |
           echo "✅ SSH 연결 성공!"
-          
-          # 🔍 EC2 환경 변수 확인
-          echo "🔹 EC2_USER: $(whoami)"
-          echo "🔹 EC2_HOST: $(hostname -I)"
+          echo "🔹 현재 사용자: $(whoami)"
+          echo "🔹 호스트 정보: $(hostname -I)"
 
+          # 프로젝트 디렉토리 확인 및 생성
           if [ ! -d "/home/ec2-user/app" ]; then
             echo "📂 /home/ec2-user/app 디렉터리가 없습니다. 생성합니다."
             mkdir -p /home/ec2-user/app
@@ -74,14 +67,21 @@ jobs:
         key: ${{ secrets.EC2_SSH_KEY }}
         command_timeout: 500s
         script: |
-          # 디스크 공간 확보
-          docker system prune -a -f
+          echo "🚀 배포 시작!"
+          
+          # 🔥 불필요한 Docker 캐시 삭제
+          echo "🧹 Docker 시스템 정리 중..."
+          docker system prune -a -f --volumes
           
           # 프로젝트 디렉토리로 이동
           cd /home/ec2-user/app
 
           # 최신 Docker 이미지 가져오기
           docker pull ${{ secrets.DOCKER_USERNAME }}/fastapi-app:latest
+          
+          # 기존 컨테이너 중지 및 삭제
+          echo "🛑 기존 컨테이너 및 볼륨 정리 중..."
+          docker-compose down -v || true
           
           # 필수 파일 존재 여부 확인
           for file in docker-compose.yml Dockerfile; do
@@ -90,9 +90,6 @@ jobs:
               exit 1
             fi
           done
-          
-          # 기존 컨테이너 중지 및 삭제
-          docker-compose down || true
           
           # .env 파일 생성 (GitHub Secrets에서 가져오기)
           cat <<EOF > .env
@@ -107,6 +104,13 @@ jobs:
           
           # docker-compose 실행 권한 부여
           chmod +x docker-compose.yml
-          
-          # Docker Compose 실행
+
+          # 🔥 Docker Overlay2 정리 (불필요한 레이어 삭제)
+          echo "🗑️ Overlay2 파일 정리 중..."
+          docker volume rm $(docker volume ls -qf dangling=true) || true
+
+          # 🏗️ Docker Compose 실행
+          echo "🚀 Docker Compose 실행 중..."
           docker-compose --env-file .env up -d
+
+          echo "✅ 배포 완료!"
