@@ -13,11 +13,8 @@ jobs:
     # 1️⃣ 최신 코드 가져오기
     - name: Checkout code
       uses: actions/checkout@v3
-    
-    # 실행 환경 정리
-    - name: Cleanup GitHub Actions runner
-      run: |
-        rm -rf $GITHUB_WORKSPACE/*  # 이전 실행 기록 삭제
+      with:
+        fetch-depth: 1  # 과거 기록 없이 최신 코드만 가져옴
 
     - name: script
       run: ls -al
