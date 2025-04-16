@@ -43,6 +43,7 @@ RUN ffmpeg -version
 
 # Python 종속성 설치
 COPY ./requirements.txt /app/
+RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # 애플리케이션 코드 복사
